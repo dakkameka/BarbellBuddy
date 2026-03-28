@@ -24,3 +24,4 @@ yarn-error.log*
 key.txt
 .env
 .env.local
+.vercel
