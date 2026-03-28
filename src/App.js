@@ -1,25 +1,852 @@
-import logo from './logo.svg';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import './App.css';
+import { getPostSessionDebrief, getLiveCoachMessage, getCalendarAdjustment, getNutritionAdvice, getChatCoachReply } from './openai';
 
-function App() {
+// ─────────────────────────────────────────────
+// ATHLETE PROFILE
+// ─────────────────────────────────────────────
+const ATHLETE = {
+  name: 'John D.', bodyweight: 185, trainingAge: 3,
+  phase: 'bulk', phaseWeek: 6, phaseTotalWeeks: 12,
+  squat1RM: 285, bench1RM: 215, deadlift1RM: 365, ohp1RM: 145,
+};
+
+const FAKE_SESSION = {
+  lift: 'Back Squat', weight: 225, totalSets: 5, setsCompleted: 5, repsPerSet: 5,
+  repVelocities: [0.72, 0.70, 0.67, 0.61, 0.55],
+  repTilts: [1.8, 2.1, 2.3, 2.6, 2.9],
+  avgVelocity: 0.65, rep1Velocity: 0.72, lastRepVelocity: 0.55,
+  velocityDropoff: 24, avgTilt: 2.3, fatigueIndex: 34,
+  nutritionPhase: 'Bulk', caloricTarget: 3200,
+  bodyweight: ATHLETE.bodyweight, trainingAge: ATHLETE.trainingAge,
+};
+
+const WORKOUT_TYPES = {
+  strength:    { label:'STRENGTH FOCUS',  color:'var(--neon-purple)', bg:'rgba(124,0,255,0.1)',  border:'rgba(124,0,255,0.4)' },
+  hypertrophy: { label:'HYPERTROPHY',     color:'var(--neon-blue)',   bg:'rgba(0,149,255,0.1)',  border:'rgba(0,149,255,0.4)' },
+  endurance:   { label:'ENDURANCE',       color:'var(--neon-teal)',   bg:'rgba(0,191,165,0.1)',  border:'rgba(0,191,165,0.4)' },
+  pr:          { label:'HIT A NEW PR 🏆', color:'var(--neon-pink)',   bg:'rgba(255,0,102,0.1)',  border:'rgba(255,0,102,0.4)' },
+  buildup:     { label:'BUILD-UP',        color:'var(--neon-green)',  bg:'rgba(0,200,83,0.1)',   border:'rgba(0,200,83,0.4)'  },
+  deload:      { label:'DELOAD',          color:'var(--neon-yellow)', bg:'rgba(255,171,0,0.1)',  border:'rgba(255,171,0,0.4)' },
+};
+
+// ─────────────────────────────────────────────
+// REAL CALENDAR — builds from today's actual date
+// ─────────────────────────────────────────────
+function buildSchedule() {
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  // Squat-heavy program: 3 squat days, 2 bench, 1 deadlift, 1 OHP per 2-week block
+  const liftPattern = [
+    { lift:'Squat 5×5',      type:'strength',    cal:'+350', rest:false,
+      reason:'Week 6 bulk — 5×5 at 79% 1RM drives neural adaptation. Squat is the foundation of your program.',
+      nutr:'Bulk surplus +350 kcal. Target 420g carbs today. Pre-workout: rice + banana 90 min before.' },
+    { lift:null,             type:null,          cal:'+200', rest:true,
+      reason:'CNS recovery after heavy squat. Posterior chain needs 48h minimum.',
+      nutr:'Lower calorie day +200 kcal. Protein stays high at 185g+ — MPS peaks 24-48h post session.' },
+    { lift:'Bench 4×8',      type:'hypertrophy', cal:'+350', rest:false,
+      reason:'Hypertrophy block: 4×8 at 72% 1RM. Controlled eccentric tempo today.',
+      nutr:'60g carbs 90 min pre-workout. Surplus supports MPS. 50g protein within 30 min post-session.' },
+    { lift:'Squat 4×6',      type:'hypertrophy', cal:'+350', rest:false,
+      reason:'Second squat day — hypertrophy focus at 74% 1RM. More volume = more adaptation.',
+      nutr:'Same carb timing as heavy squat day. Hypertrophy sessions are calorically expensive.' },
+    { lift:null,             type:null,          cal:'+200', rest:true,
+      reason:'Rest after back-to-back squat and bench. CNS fatigue accumulates.',
+      nutr:'Recovery day. Keep protein at 185g. Extra hydration.' },
+    { lift:'Deadlift 3×5',   type:'strength',    cal:'+400', rest:false,
+      reason:'CNS readiness high — 3×5 at 86% 1RM. This is a strength day, not volume.',
+      nutr:'Highest calorie day: +400 kcal. Complex carbs only. 50g protein within 30 min post.' },
+    { lift:null,             type:null,          cal:'+150', rest:true,
+      reason:'Active rest. Mobility or light cardio only. Deload before next week.',
+      nutr:'Lowest calorie day +150 kcal. Focus on sleep — GH peaks during deep sleep.' },
+    { lift:'Squat 5×5+',     type:'pr',          cal:'+350', rest:false,
+      reason:'PR ATTEMPT: add 5 lbs to last squat. 6 weeks of velocity data show consistent adaptation.',
+      nutr:'Largest carb day. Load 500g carbs split between night before and pre-workout.' },
+    { lift:null,             type:null,          cal:'+200', rest:true,
+      reason:'Rest after PR attempt. Max effort causes more CNS fatigue than volume sessions.',
+      nutr:'Recovery nutrition. 185g+ protein, extra antioxidants to reduce post-max inflammation.' },
+    { lift:'Bench 4×8+',     type:'buildup',     cal:'+350', rest:false,
+      reason:'Progressive bench: +2.5 lbs. Pressing velocity held at 0.68 m/s last session.',
+      nutr:'Same as last bench day. Progressive overload is about consistency — nutrition unchanged.' },
+    { lift:'Squat 3×8',      type:'hypertrophy', cal:'+350', rest:false,
+      reason:'Volume squat day — 3×8 at 68% 1RM. Higher reps build the muscular base for strength.',
+      nutr:'Higher carb timing around this session — 8-rep sets burn more glycogen.' },
+    { lift:null,             type:null,          cal:'+200', rest:true,
+      reason:'Rest after squat volume day.',
+      nutr:'Standard recovery nutrition. Hydration priority today.' },
+    { lift:'OHP 4×8',        type:'hypertrophy', cal:'+350', rest:false,
+      reason:'OHP hypertrophy: 4×8 at 69% 1RM. IMU tilt shows right shoulder weakness — pause at top.',
+      nutr:'Standard bulk day. OHP is deceptively CNS-intensive — treat pre-workout nutrition same as squat day.' },
+    { lift:'Deload Squat',    type:'deload',      cal:'+150', rest:false,
+      reason:'Planned deload: 50% load, focus on bar path. Two hard weeks — tendons need to catch up.',
+      nutr:'Lower calorie day. Mild deficit on deload days accelerates recomposition.' },
+  ];
+
+  const days = [];
+  for (let i = 0; i < 14; i++) {
+    const date = new Date(today);
+    date.setDate(today.getDate() + i);
+    const pattern = liftPattern[i % liftPattern.length];
+    days.push({
+      ...pattern,
+      date,
+      dayNum: date.getDate(),
+      month: date.getMonth(),
+      year: date.getFullYear(),
+      weekday: date.getDay(), // 0=Sun
+      today: i === 0,
+      dateKey: date.toDateString(),
+    });
+  }
+  return days;
+}
+
+// Month/day helpers
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAY_NAMES   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+// ─────────────────────────────────────────────
+// SHARED UI COMPONENTS
+// ─────────────────────────────────────────────
+function AICard({ dot, text, meta, loading }) {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+    <div className="ai-card">
+      <div className={`ai-dot dot-${dot}`}/>
+      <div style={{flex:1}}>
+        {loading
+          ? <div className="ai-loading"><div className="ai-spinner"/><span style={{fontSize:12,color:'var(--muted)',fontWeight:700}}>AI thinking...</span></div>
+          : <div className="at">{text}</div>
+        }
+        {meta && !loading && <div className="am">{meta}</div>}
+      </div>
     </div>
   );
 }
 
-export default App;
+// ─────────────────────────────────────────────
+// START LIFT  (can receive pre-filled lift from calendar)
+// ─────────────────────────────────────────────
+function StartLift({ onStart, presetLift }) {
+  const lifts = [
+    { name:'BACK SQUAT',  icon:'🏋️', pct:0.79, color:'blue',   rm:ATHLETE.squat1RM },
+    { name:'BENCH PRESS', icon:'💪', pct:0.72, color:'purple', rm:ATHLETE.bench1RM },
+    { name:'DEADLIFT',    icon:'⚡', pct:0.86, color:'green',  rm:ATHLETE.deadlift1RM },
+    { name:'OHP',         icon:'🎯', pct:0.69, color:'orange', rm:ATHLETE.ohp1RM },
+    { name:'ROMANIAN DL', icon:'🔥', pct:0.70, color:'yellow', rm:205 },
+    { name:'FRONT SQUAT', icon:'⭐', pct:0.75, color:'teal',   rm:225 },
+  ];
+
+  // Map calendar lift names to selector index
+  const guessIdx = () => {
+    if (!presetLift) return 0;
+    const p = presetLift.toLowerCase();
+    if (p.includes('deadlift') && !p.includes('romanian')) return 2;
+    if (p.includes('bench'))   return 1;
+    if (p.includes('ohp') || p.includes('overhead')) return 3;
+    if (p.includes('romanian')) return 4;
+    if (p.includes('front squat')) return 5;
+    return 0; // default to squat
+  };
+
+  const [sel, setSel]       = useState(guessIdx);
+  const [weight, setWeight] = useState(() => { const i = guessIdx(); return Math.round(lifts[i].rm * lifts[i].pct / 5) * 5; });
+  const [sets, setSets]     = useState(5);
+  const [reps, setReps]     = useState(5);
+
+  const pick = (i) => { setSel(i); setWeight(Math.round(lifts[i].rm * lifts[i].pct / 5) * 5); };
+  const pct1RM = Math.round((weight / lifts[sel].rm) * 100);
+  const zone = pct1RM < 70 ? '⚡ Warm-up / Technique' : pct1RM < 80 ? '💪 Hypertrophy zone (70–80%)' : pct1RM < 90 ? '🏋️ Strength zone (80–90%)' : '🔥 Max effort zone (90%+)';
+
+  return (
+    <div className="screen">
+      <div className="page-title gradient-blue">START LIFT</div>
+      <div className="page-sub">
+        {presetLift ? `📅 Pre-filled from calendar: ${presetLift} · Adjust as needed` : 'Choose your exercise · Weight auto-sets to working % · Adjust as needed'}
+      </div>
+      <div className="lift-grid">
+        {lifts.map((l,i) => (
+          <div key={i} className={`lift-btn ${sel===i?`sel-${l.color}`:''}`} onClick={() => pick(i)}>
+            <div className="lift-icon">{l.icon}</div>
+            <div className="lift-name">{l.name}</div>
+            <div className="lift-pr">1RM: {l.rm} lbs</div>
+          </div>
+        ))}
+      </div>
+      <div className="gcard gc-blue">
+        <div className="panel-header">
+          <span className="panel-title">SET WEIGHT</span>
+          <span className="badge badge-blue">{pct1RM}% of 1RM</span>
+        </div>
+        <div className="weight-row">
+          <button className="wb wm" onClick={() => setWeight(w => Math.max(45,w-10))}>−10</button>
+          <button className="wb wm" onClick={() => setWeight(w => Math.max(45,w-5))}>−5</button>
+          <div className="weight-display">{weight}</div>
+          <button className="wb wp" onClick={() => setWeight(w => w+5)}>+5</button>
+          <button className="wb wp" onClick={() => setWeight(w => w+10)}>+10</button>
+        </div>
+        <div style={{textAlign:'center',fontSize:11,color:'var(--muted)',fontWeight:800,marginBottom:12}}>{zone}</div>
+        <div className="pill-row">
+          <span className="pill-label">SETS</span>
+          {[3,4,5,6].map(v => <span key={v} className={`pill ${sets===v?'pill-active':''}`} onClick={() => setSets(v)}>{v}</span>)}
+          <span className="pill-label" style={{marginLeft:12}}>REPS</span>
+          {[3,4,5,6,8,10].map(v => <span key={v} className={`pill ${reps===v?'pill-active':''}`} onClick={() => setReps(v)}>{v}</span>)}
+        </div>
+        <button className="start-btn" onClick={() => onStart({ lift:lifts[sel].name, weight, sets, reps, rm:lifts[sel].rm })}>
+          START SESSION
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// LIVE SESSION  (rest timer only between sets)
+// ─────────────────────────────────────────────
+function LiveSession({ session }) {
+  const [repCount, setRepCount]         = useState(0);
+  const [setNum, setSetNum]             = useState(1);
+  const [phase, setPhase]               = useState('lifting'); // 'lifting' | 'resting'
+  const [restTimer, setRestTimer]       = useState(0);
+  const [sessionTimer, setSessionTimer] = useState(0);
+  const [coachMsg, setCoachMsg]         = useState('');
+  const [coachLoading, setCoachLoading] = useState(false);
+  const [done, setDone]                 = useState(false);
+
+  const s = session || { lift:'Back Squat', weight:225, sets:5, reps:5, rm:285 };
+  const baseVel = (s.weight/s.rm) > 0.85 ? 0.55 : 0.72;
+  const repVels = useMemo(() =>
+    Array.from({length:s.reps},(_,i) => parseFloat((baseVel - i*(baseVel*0.045)).toFixed(2))),
+    [s.reps, baseVel]
+  );
+
+  const currentVel = repVels[Math.min(repCount,repVels.length-1)] || baseVel;
+  const velDropoff = repCount>0 ? Math.round(((repVels[0]-currentVel)/repVels[0])*100) : 0;
+  const tiltDeg    = (1.8 + repCount*0.22).toFixed(1);
+
+  const REST_SECONDS = 180; // 3 min rest between sets
+
+  const fetchCoach = useCallback(async (rep) => {
+    if (rep < 1) return;
+    setCoachLoading(true);
+    try {
+      const vel = repVels[rep-1] || currentVel;
+      const msg = await getLiveCoachMessage({
+        lift:s.lift, currentRep:rep, targetReps:s.reps,
+        thisRepVelocity:vel, rep1Velocity:repVels[0],
+        velocityDropoff:Math.round(((repVels[0]-vel)/repVels[0])*100),
+        tilt:(1.8+rep*0.22).toFixed(1),
+        setNumber:setNum, totalSets:s.sets, nutritionPhase:ATHLETE.phase,
+      });
+      setCoachMsg(msg);
+    } catch { setCoachMsg('Stay tight — drive through the heels!'); }
+    setCoachLoading(false);
+  }, [s, repVels, currentVel, setNum]);
+
+  // Session clock — always ticking
+  useEffect(() => {
+    const cl = setInterval(() => setSessionTimer(t => t+1), 1000);
+    return () => clearInterval(cl);
+  }, []);
+
+  // Rep simulation — only runs during 'lifting' phase
+  useEffect(() => {
+    if (phase !== 'lifting' || done) return;
+    const rt = setInterval(() => {
+      setRepCount(r => {
+        const next = r + 1;
+        if (next <= s.reps) {
+          fetchCoach(next);
+          return next;
+        }
+        // Set finished → switch to rest phase
+        clearInterval(rt);
+        if (setNum < s.sets) {
+          setPhase('resting');
+          setRestTimer(REST_SECONDS);
+        } else {
+          setDone(true);
+        }
+        return r;
+      });
+    }, 2200);
+    return () => clearInterval(rt);
+  }, [phase, done, s, setNum, fetchCoach]);
+
+  // Rest countdown
+  useEffect(() => {
+    if (phase !== 'resting') return;
+    if (restTimer <= 0) {
+      // Rest done → start next set
+      setSetNum(n => n + 1);
+      setRepCount(0);
+      setPhase('lifting');
+      return;
+    }
+    const t = setTimeout(() => setRestTimer(r => r - 1), 1000);
+    return () => clearTimeout(t);
+  }, [phase, restTimer]);
+
+  const sessionMins = Math.floor(sessionTimer/60);
+  const sessionSecs = String(sessionTimer%60).padStart(2,'0');
+  const restMins    = Math.floor(restTimer/60);
+  const restSecs    = String(restTimer%60).padStart(2,'0');
+  const restPct     = Math.round(((REST_SECONDS - restTimer) / REST_SECONDS) * 100);
+
+  return (
+    <div className="screen">
+      <div className="page-title gradient-teal">LIVE SESSION</div>
+      <div className="page-sub">{s.lift} · Set {setNum} of {s.sets} · {s.weight} lbs ({Math.round((s.weight/s.rm)*100)}% 1RM) · ⏱ {sessionMins}:{sessionSecs}</div>
+
+      {/* REST TIMER — only shows between sets */}
+      {phase === 'resting' && (
+        <div className="rest-banner">
+          <div className="rest-icon">⏸</div>
+          <div style={{flex:1}}>
+            <div className="rest-title">REST PERIOD · Set {setNum} complete</div>
+            <div className="rest-countdown">{restMins}:{restSecs}</div>
+            <div className="rest-bar-wrap">
+              <div className="rest-bar-fill" style={{width:`${restPct}%`}}/>
+            </div>
+            <div className="rest-sub">Next: Set {setNum+1} of {s.sets} · {REST_SECONDS}s programmed rest</div>
+          </div>
+          <button className="rest-skip" onClick={() => { setSetNum(n=>n+1); setRepCount(0); setPhase('lifting'); }}>
+            Skip Rest ▶
+          </button>
+        </div>
+      )}
+
+      {done && (
+        <div className="rest-banner" style={{background:'rgba(0,200,83,0.08)',borderColor:'rgba(0,200,83,0.4)'}}>
+          <div className="rest-icon">🏆</div>
+          <div>
+            <div className="rest-title" style={{color:'var(--neon-green)'}}>SESSION COMPLETE!</div>
+            <div style={{fontSize:12,color:'var(--muted)',fontWeight:700}}>All {s.sets} sets done · Head to Post-Session for your debrief</div>
+          </div>
+        </div>
+      )}
+
+      <div className="stat-row">
+        <div className="sc sc-blue"><div className="sl">Reps</div><div className="sv">{repCount}<span className="su">/{s.reps}</span></div><div className="sd neu">{phase==='resting'?'Set done ✓':`${Math.round((repCount/s.reps)*100)}% of set`}</div></div>
+        <div className="sc sc-orange"><div className="sl">Bar Velocity</div><div className="sv">{currentVel}<span className="su">m/s</span></div><div className="sd" style={{color:velDropoff>20?'var(--neon-orange)':'var(--neon-green)'}}>{velDropoff>0?`▼ ${velDropoff}% from rep 1`:'Baseline'}</div></div>
+        <div className="sc sc-yellow"><div className="sl">Bar Tilt</div><div className="sv">{tiltDeg}<span className="su">°L</span></div><div className="sd" style={{color:parseFloat(tiltDeg)>2.5?'var(--neon-orange)':'var(--neon-green)'}}>{parseFloat(tiltDeg)>2.5?'Form flag':'Acceptable'}</div></div>
+        <div className="sc sc-purple"><div className="sl">Session Time</div><div className="sv">{sessionMins}:{sessionSecs}</div><div className="sd neu">Total elapsed</div></div>
+      </div>
+
+      <div className="gcard gc-blue" style={{textAlign:'center',marginBottom:14}}>
+        <div className="rep-counter">
+          <div className={`rep-num ${phase==='resting'?'gradient-green':'gradient-teal'}`}>
+            {phase==='resting' ? '✓' : repCount}
+          </div>
+          <div className="rep-label">{phase==='resting'?'SET COMPLETE — RESTING':'REPS COUNTED BY IMU SENSOR'}</div>
+        </div>
+        <div className="set-dots">
+          {Array.from({length:s.sets}).map((_,i) => <div key={i} className={`sdot ${i===setNum-1&&phase==='lifting'?'sdot-cur':i<setNum-1||(i===setNum-1&&phase==='resting')?'sdot-done':''}`}/>)}
+        </div>
+        <div style={{fontSize:10,color:'var(--muted)',fontWeight:800,marginTop:4}}>SETS COMPLETED</div>
+      </div>
+
+      <div className="panel-grid">
+        <div className="gcard gc-blue">
+          <div className="panel-header"><span className="panel-title">REP VELOCITY</span><span className="badge badge-blue">LIVE</span></div>
+          <div className="bar-chart">
+            {repVels.map((v,i) => <div key={i} className={`bar ${i<repCount?(v/repVels[0]>0.85?'bar-ok':'bar-warn'):'bar-dim'}`} style={{height:`${i<repCount?Math.round((v/repVels[0])*95):15}%`}}/>)}
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:'var(--muted)',marginTop:4,fontWeight:800}}>
+            <span>Rep 1 · {repVels[0]} m/s</span><span>Rep {s.reps} · {repVels[s.reps-1]} m/s</span>
+          </div>
+        </div>
+        <div className="gcard gc-orange">
+          <div className="panel-header"><span className="panel-title">BAR BALANCE</span><span className="badge badge-orange">IMU · LIVE</span></div>
+          <div style={{textAlign:'center',fontSize:10,color:'var(--muted)',marginBottom:6,fontWeight:800}}>LEFT ←——————→ RIGHT</div>
+          <div className="tilt-track">
+            <div className="tilt-center"/>
+            <div className="tilt-fill" style={{width:Math.round(parseFloat(tiltDeg)*8),left:`calc(50% - ${Math.round(parseFloat(tiltDeg)*8)+4}px)`}}/>
+          </div>
+          <div style={{textAlign:'center',fontFamily:'Bebas Neue',fontSize:22,color:parseFloat(tiltDeg)>2.5?'var(--neon-orange)':'var(--neon-green)',letterSpacing:2,margin:'8px 0'}}>
+            {tiltDeg}° {parseFloat(tiltDeg)>2.5?'LEFT ⚠️':'LEFT ✓'}
+          </div>
+          <div className="metric-row"><span className="mn">Left sensor</span><span className="mv" style={{color:'var(--neon-green)'}}>✓ Active</span></div>
+          <div className="metric-row"><span className="mn">Right sensor</span><span className="mv" style={{color:'var(--neon-green)'}}>✓ Active</span></div>
+        </div>
+        <div className="gcard gc-purple panel-full">
+          <div className="panel-header"><span className="panel-title">AI COACH</span><span className="badge badge-purple">Claude · LIVE</span></div>
+          <AICard dot={coachLoading?'blue':velDropoff>20?'orange':'green'} text={coachMsg||(phase==='resting'?'Good set — rest up, next set coming.':'Waiting for first rep...')} meta={coachLoading?null:'Live coaching · updated each rep'} loading={coachLoading}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// POST SESSION
+// ─────────────────────────────────────────────
+function PostSession() {
+  const [aiLines, setAiLines] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const s = FAKE_SESSION;
+
+  const fetchDebrief = useCallback(async () => {
+    setLoading(true);
+    try {
+      const raw = await getPostSessionDebrief(s);
+      const lines = raw.split('\n').filter(l=>l.trim().startsWith('•')).map(l=>l.trim().replace(/^•\s*/,''));
+      setAiLines(lines.length>0?lines:[raw]);
+    } catch { setAiLines(['Could not reach AI — check your API key in openai.js']); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { fetchDebrief(); }, [fetchDebrief]);
+
+  return (
+    <div className="screen">
+      <div className="page-title gradient-green">POST-SESSION</div>
+      <div className="page-sub">{s.lift} · 5×5 @ {s.weight} lbs · {Math.round((s.weight/ATHLETE.squat1RM)*100)}% 1RM</div>
+      <div className="stat-row">
+        <div className="sc sc-green"><div className="sl">Total Volume</div><div className="sv">{(s.weight*s.repsPerSet*s.setsCompleted).toLocaleString()}<span className="su">lbs</span></div><div className="sd up">▲ +{s.weight*s.repsPerSet} vs last</div></div>
+        <div className="sc sc-blue"><div className="sl">Avg Velocity</div><div className="sv">{s.avgVelocity}<span className="su">m/s</span></div><div className="sd up">▲ +0.03 vs last</div></div>
+        <div className="sc sc-yellow"><div className="sl">Vel Dropoff</div><div className="sv">{s.velocityDropoff}<span className="su">%</span></div><div className="sd" style={{color:s.velocityDropoff>20?'var(--neon-orange)':'var(--neon-green)'}}>{s.velocityDropoff>20?'Fatigue detected':'Within range'}</div></div>
+        <div className="sc sc-orange"><div className="sl">Avg Tilt</div><div className="sv">{s.avgTilt}<span className="su">°L</span></div><div className="sd dn">Persistent</div></div>
+      </div>
+      <div className="gcard gc-blue" style={{marginBottom:14}}>
+        <div className="panel-header"><span className="panel-title">VELOCITY PER REP</span><span className="badge badge-blue">Set 1 of 5</span></div>
+        <div className="bar-chart" style={{height:80}}>
+          {s.repVelocities.map((v,i) => (
+            <div key={i} className={`bar ${v/s.repVelocities[0]>0.85?'bar-ok':'bar-warn'}`} style={{height:`${Math.round((v/s.repVelocities[0])*95)}%`,position:'relative'}}>
+              <span style={{position:'absolute',top:-16,left:'50%',transform:'translateX(-50%)',fontSize:8,fontWeight:800,color:'var(--muted)',whiteSpace:'nowrap'}}>{v}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:'var(--muted)',marginTop:4,fontWeight:800}}>
+          {s.repVelocities.map((_,i)=><span key={i}>Rep {i+1}</span>)}
+        </div>
+        <div style={{display:'flex',gap:12,marginTop:10,fontSize:10,fontWeight:800}}>
+          <span style={{color:'var(--neon-blue)'}}>■ Strong (&gt;85% of rep 1)</span>
+          <span style={{color:'var(--neon-orange)'}}>■ Fatigued (&lt;85%)</span>
+        </div>
+      </div>
+      <div className="gcard gc-green">
+        <div className="panel-header">
+          <span className="panel-title">AI DEBRIEF</span>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <span className="badge badge-green">Claude</span>
+            <button className="refresh-btn" onClick={fetchDebrief} disabled={loading}>↺ Refresh</button>
+          </div>
+        </div>
+        {loading
+          ? <AICard dot="blue" text="" loading={true}/>
+          : aiLines.map((line,i) => <AICard key={i} dot={i===0?'green':i===1?'orange':'blue'} text={line} meta={i===0?'Performance':i===1?'Form analysis':'Next session'}/>)
+        }
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// CALENDAR  (real dates, Start Lift button)
+// ─────────────────────────────────────────────
+function CalendarScreen({ schedule, setSchedule, onStartFromCalendar }) {
+  const [phase, setPhase]       = useState('bulk');
+  const [blocked, setBlocked]   = useState(new Set());
+  const [modalDay, setModalDay] = useState(null);
+  const [notif, setNotif]       = useState(null);
+  const [aiLines, setAiLines]   = useState([]);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const currentMonth = today.getMonth();
+  const currentYear  = today.getFullYear();
+
+  const showNotif = msg => { setNotif(msg); setTimeout(()=>setNotif(null),5000); };
+
+  const fetchCalAI = useCallback(async (p, bl) => {
+    setAiLoading(true);
+    try {
+      const upcoming = schedule.filter(d=>!d.rest&&d.lift).slice(0,4).map(d=>d.lift).join(', ');
+      const raw = await getCalendarAdjustment({
+        phase:p, phaseWeek:ATHLETE.phaseWeek, phaseTotalWeeks:ATHLETE.phaseTotalWeeks,
+        avgFatigue:FAKE_SESSION.fatigueIndex, avgVelocityDropoff:FAKE_SESSION.velocityDropoff,
+        tiltIssue:FAKE_SESSION.avgTilt>2.0, avgTilt:FAKE_SESSION.avgTilt,
+        blockedDays:bl.size, caloricDelta:p==='bulk'?'+350':p==='cut'?'-300':'0',
+        bodyweightTrend:p==='bulk'?'gaining ~0.5 lbs/week':'losing ~0.75 lbs/week',
+        upcomingSchedule: upcoming,
+      });
+      const lines = raw.split('\n').filter(l=>l.trim().startsWith('•')).map(l=>l.trim().replace(/^•\s*/,''));
+      setAiLines(lines.length>0?lines:[raw]);
+    } catch { setAiLines(['Could not reach AI — check your API key in openai.js']); }
+    setAiLoading(false);
+  }, [schedule]);
+
+  useEffect(()=>{ fetchCalAI('bulk',new Set()); },[fetchCalAI]);
+
+  const toggleBlock = dayKey => {
+    const nb = new Set(blocked);
+    if(nb.has(dayKey)){
+      nb.delete(dayKey);
+      showNotif('Day unblocked — workout restored.');
+    } else {
+      nb.add(dayKey);
+      showNotif('Day blocked. AI updating your plan...');
+    }
+    setBlocked(nb); fetchCalAI(phase,nb);
+  };
+
+  const getDayBg = d => d.rest?'cal-rest-bg':phase==='bulk'?'cal-bulk-bg':phase==='cut'?'cal-cut-bg':'cal-maintain-bg';
+  const phaseCalLabel = phase==='cut'?'pill-cut-cal':'pill-bulk-cal';
+
+  // Fill empty slots before first day of month for the grid header
+  const firstDayOfWeek = schedule[0]?.weekday ?? 0; // 0=Sun
+
+  return (
+    <div className="screen">
+      <div className="page-title gradient-purple">TRAINING CALENDAR</div>
+      <div className="page-sub">
+        {MONTH_NAMES[currentMonth]} {currentYear} · Tap any day for AI reasoning · ✕ to block · 🏋️ to start
+      </div>
+      <div className="phase-toggle">
+        <span style={{fontSize:11,fontWeight:800,color:'var(--muted)'}}>CYCLE:</span>
+        {[['bulk','ptog-bulk','🟢 BULKING'],['cut','ptog-cut','🔶 CUTTING'],['maintain','ptog-maintain','🔵 MAINTAIN']].map(([p,cls,lbl])=>(
+          <button key={p} className={`ptog ${cls} ${phase===p?'ptog-active':''}`}
+            onClick={()=>{ setPhase(p); showNotif(`Switched to ${p} — AI updating...`); fetchCalAI(p,blocked); }}>
+            {lbl}
+          </button>
+        ))}
+        <span style={{fontSize:11,fontWeight:800,color:'var(--muted)',marginLeft:8}}>Wk {ATHLETE.phaseWeek}/{ATHLETE.phaseTotalWeeks}</span>
+      </div>
+
+      {notif&&<div className="notification"><div className="notif-icon">🤖</div><div><div className="notif-text">{notif}</div><div className="notif-sub">AI updated your plan · tap any day to review</div></div></div>}
+
+      <div className={`phase-banner ${phase==='bulk'?'bulk-banner':phase==='cut'?'cut-banner':'maintain-banner'}`}>
+        <div>
+          <div style={{fontFamily:'Bebas Neue',fontSize:20,letterSpacing:2,color:phase==='bulk'?'var(--neon-green)':phase==='cut'?'var(--neon-orange)':'var(--neon-blue)'}}>
+            {phase.toUpperCase()} PHASE · WK {ATHLETE.phaseWeek}/{ATHLETE.phaseTotalWeeks}
+          </div>
+          <div style={{fontSize:11,color:'var(--muted)',fontWeight:700}}>
+            Today: {DAY_NAMES[today.getDay()]} {MONTH_NAMES[currentMonth]} {today.getDate()} · {phase==='bulk'?'+350':phase==='cut'?'-300':'0'} kcal daily
+          </div>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div style={{fontSize:10,color:'var(--muted)',fontWeight:800}}>NEXT PHASE</div>
+          <div style={{fontFamily:'Bebas Neue',fontSize:18,color:'var(--neon-yellow)',letterSpacing:1}}>{phase==='bulk'?'CUT':'BULK'} · +12 DAYS</div>
+        </div>
+      </div>
+
+      <div className="legend-row">
+        {[['rgba(124,0,255,0.5)','Lift'],['rgba(0,200,83,0.5)','Bulk'],['rgba(255,98,0,0.5)','Cut'],['rgba(200,200,200,0.7)','Rest'],['rgba(0,149,255,0.5)','Today'],['rgba(255,0,102,0.4)','Blocked']].map(([bg,lbl])=>(
+          <div key={lbl} className="leg-item"><div className="leg-dot" style={{background:bg}}/>{lbl}</div>
+        ))}
+      </div>
+
+      <div className="gcard gc-purple" style={{marginBottom:14}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+          <div style={{fontFamily:'Bebas Neue',fontSize:20,letterSpacing:2,color:'var(--text)'}}>{MONTH_NAMES[currentMonth].toUpperCase()} {currentYear}</div>
+          <span style={{fontSize:10,color:'var(--muted)',fontWeight:800}}>Tap day · ✕ block · 🏋️ start</span>
+        </div>
+        <div className="cal-grid">
+          {['SUN','MON','TUE','WED','THU','FRI','SAT'].map(d=><div key={d} className="cal-dh">{d}</div>)}
+          {/* Empty cells for days before the first scheduled day */}
+          {Array.from({length:firstDayOfWeek}).map((_,i)=><div key={`e${i}`} className="cal-empty"/>)}
+          {schedule.map(day=>{
+            const isBlocked = blocked.has(day.dateKey);
+            const wtype = day.type ? WORKOUT_TYPES[day.type] : null;
+            return (
+              <div key={day.dateKey}
+                className={`cal-day ${getDayBg(day)} ${day.today?'cal-today':''} ${isBlocked?'cal-blocked':''}`}
+                onClick={()=>!isBlocked&&setModalDay(day)}>
+                <div className={`cal-num ${day.today?'cal-num-today':''}`}>
+                  {day.dayNum}
+                  {day.today && <span style={{fontSize:7,color:'var(--neon-blue)',marginLeft:3,fontWeight:900}}>TODAY</span>}
+                </div>
+                {isBlocked
+                  ? <span className="cpill pill-blocked">BLOCKED</span>
+                  : day.lift
+                  ? <span className="cpill pill-lift" style={day._coachPatched?{background:'rgba(255,0,102,0.15)',color:'var(--neon-pink)'}:{}}>{day._coachPatched?'🤖 ':''}{day.lift}</span>
+                  : <span className="cpill pill-rest-cal">{day._coachPatched?'🤖 Rest':'Rest'}</span>}
+                {!isBlocked&&day.cal&&<span className={`cpill ${phaseCalLabel}`}>{day.cal} kcal</span>}
+                {!isBlocked&&wtype&&<span className="cpill" style={{background:wtype.bg,color:wtype.color,fontSize:7}}>{wtype.label}</span>}
+                {!isBlocked&&day.lift&&(
+                  <button className="cal-start-btn" title="Start this lift"
+                    onClick={e=>{e.stopPropagation();onStartFromCalendar(day.lift);}}>
+                    🏋️
+                  </button>
+                )}
+                <button className={`block-btn ${isBlocked?'block-btn-blocked':''}`}
+                  onClick={e=>{e.stopPropagation();toggleBlock(day.dateKey);}}>
+                  {isBlocked?'↩':'✕'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="gcard gc-blue">
+        <div className="panel-header">
+          <span className="panel-title">AI SCHEDULE RECOMMENDATION</span>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <span className="badge badge-purple">Claude</span>
+            <button className="refresh-btn" onClick={()=>fetchCalAI(phase,blocked)} disabled={aiLoading}>↺ Refresh</button>
+          </div>
+        </div>
+        {aiLoading?<AICard dot="blue" text="" loading={true}/>
+          :aiLines.map((line,i)=><AICard key={i} dot={i===0?'green':i===1?'blue':'orange'} text={line} meta={i===0?'Load recommendation':i===1?'Exercise adjustment':'Recovery priority'}/>)}
+      </div>
+
+      {modalDay&&(
+        <div className="modal-overlay" onClick={e=>e.target.classList.contains('modal-overlay')&&setModalDay(null)}>
+          <div className="modal">
+            <h2>{modalDay.lift||'REST DAY'}</h2>
+            <div className="modal-sub">
+              {DAY_NAMES[modalDay.weekday]} · {MONTH_NAMES[modalDay.month]} {modalDay.dayNum}, {modalDay.year}
+              {modalDay.today ? ' · TODAY' : ''} · {phase.charAt(0).toUpperCase()+phase.slice(1)} Phase
+            </div>
+            {modalDay.type&&(()=>{const wt=WORKOUT_TYPES[modalDay.type];return<span className="why-tag" style={{background:wt.bg,borderColor:wt.border,color:wt.color}}>{wt.label}</span>;})()}
+            <div className="reason-block"><div className="reason-label">WHY THIS IS SCHEDULED</div><div className="reason-text">{modalDay.reason}</div></div>
+            <div className="reason-block"><div className="reason-label">NUTRITION CONTEXT</div><div className="reason-text">{modalDay.nutr}</div></div>
+            <div className="modal-btns">
+              <button className="mbtn mbtn-close" onClick={()=>setModalDay(null)}>Close</button>
+              <button className="mbtn mbtn-block" onClick={()=>{toggleBlock(modalDay.dateKey);setModalDay(null);}}>✕ Block Day</button>
+              {modalDay.lift&&(
+                <button className="mbtn mbtn-swap" style={{background:'rgba(0,200,83,0.1)',borderColor:'rgba(0,200,83,0.4)',color:'var(--neon-green)'}}
+                  onClick={()=>{onStartFromCalendar(modalDay.lift);setModalDay(null);}}>
+                  🏋️ Start This Lift
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// AI COACH CHAT  (patches shared schedule in real time)
+// ─────────────────────────────────────────────
+function AICoach({ schedule, onApplyPatches, onGoToCalendar }) {
+  const [messages, setMessages] = useState([
+    {role:'assistant', content:"Hey! I'm your BarbellBuddy coach. I know your full training history — squats, bench, deads, everything. What's on your mind? Tell me about life, training, goals — anything that's affecting your schedule and I'll adjust it in real time."}
+  ]);
+  const [input, setInput]       = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [lastPatchCount, setLastPatchCount] = useState(0);
+  const bottomRef               = useRef(null);
+
+  const athleteContext = `
+Athlete: ${ATHLETE.name} | Bodyweight: ${ATHLETE.bodyweight} lbs | Training age: ${ATHLETE.trainingAge} years
+Phase: ${ATHLETE.phase} bulk | Phase week: ${ATHLETE.phaseWeek}/${ATHLETE.phaseTotalWeeks}
+1RMs — Squat: ${ATHLETE.squat1RM} lbs | Bench: ${ATHLETE.bench1RM} lbs | Deadlift: ${ATHLETE.deadlift1RM} lbs | OHP: ${ATHLETE.ohp1RM} lbs
+Last session: ${FAKE_SESSION.lift} @ ${FAKE_SESSION.weight} lbs, 5x5, velocity dropoff ${FAKE_SESSION.velocityDropoff}%, fatigue index ${FAKE_SESSION.fatigueIndex}%
+Bar tilt: ${FAKE_SESSION.avgTilt}° left (persistent, 3 sessions)
+Current program: squat-heavy (3 squat days/week), 1 bench, 1 deadlift, 1 OHP
+Caloric target: ${FAKE_SESSION.caloricTarget} kcal/day (bulk surplus)
+`.trim();
+
+  // Prepare a lightweight schedule summary for the prompt
+  const scheduleForPrompt = schedule.map(d => ({
+    dateLabel: `${MONTH_NAMES[d.month]} ${d.dayNum}`,
+    weekday: DAY_NAMES[d.weekday],
+    lift: d.lift,
+    rest: d.rest,
+  }));
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({behavior:'smooth'}); }, [messages]);
+
+  const send = async () => {
+    if (!input.trim() || loading) return;
+    const userMsg = { role:'user', content: input.trim() };
+    const newHistory = [...messages, userMsg];
+    setMessages(newHistory);
+    setInput('');
+    setLoading(true);
+
+    try {
+      const apiHistory = newHistory.map(m => ({ role: m.role, content: m.content }));
+      const result = await getChatCoachReply(apiHistory, athleteContext, scheduleForPrompt);
+
+      const { reply, patches } = result;
+
+      // Apply patches to live schedule
+      if (patches && patches.length > 0) {
+        onApplyPatches(patches);
+        setLastPatchCount(patches.length);
+      } else {
+        setLastPatchCount(0);
+      }
+
+      setMessages(h => [...h, {
+        role: 'assistant',
+        content: reply,
+        patches: patches && patches.length > 0 ? patches : null,
+      }]);
+    } catch (e) {
+      setMessages(h => [...h, { role:'assistant', content: "Connection issue — check your API key in openai.js and try again." }]);
+    }
+    setLoading(false);
+  };
+
+  const handleKey = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
+
+  const quickPrompts = [
+    "Just got a girlfriend, gym time might drop 👀",
+    "Feeling overtrained this week",
+    "Want to skip leg day this week",
+    "Add more squat volume to my program",
+    "Traveling next week, no gym access",
+    "I'm injured — sore lower back",
+  ];
+
+  return (
+    <div className="screen">
+      <div className="page-title gradient-pink">AI COACH</div>
+      <div className="page-sub">Tell me anything — I'll adjust your calendar in real time</div>
+
+      <div className="coach-context-bar">
+        <div className="coach-ctx-item"><span className="coach-ctx-label">PHASE</span><span className="coach-ctx-val">Bulk Wk {ATHLETE.phaseWeek}</span></div>
+        <div className="coach-ctx-item"><span className="coach-ctx-label">SQUAT 1RM</span><span className="coach-ctx-val">{ATHLETE.squat1RM} lbs</span></div>
+        <div className="coach-ctx-item"><span className="coach-ctx-label">LAST FATIGUE</span><span className="coach-ctx-val" style={{color:FAKE_SESSION.fatigueIndex>30?'var(--neon-orange)':'var(--neon-green)'}}>{FAKE_SESSION.fatigueIndex}%</span></div>
+        <div className="coach-ctx-item"><span className="coach-ctx-label">TILT ISSUE</span><span className="coach-ctx-val" style={{color:'var(--neon-orange)'}}>{FAKE_SESSION.avgTilt}° L</span></div>
+        <button className="cal-peek-btn" onClick={onGoToCalendar}>📅 View Calendar</button>
+      </div>
+
+      <div className="quick-prompts">
+        {quickPrompts.map((p,i) => (
+          <button key={i} className="qprompt" onClick={()=>setInput(p)}>{p}</button>
+        ))}
+      </div>
+
+      <div className="chat-window">
+        {messages.map((m,i) => (
+          <div key={i}>
+            <div className={`chat-bubble ${m.role==='user'?'bubble-user':'bubble-ai'}`}>
+              {m.role==='assistant'&&<div className="bubble-avatar">BB</div>}
+              <div className={`bubble-text ${m.role==='user'?'bubble-text-user':'bubble-text-ai'}`}>
+                {m.content}
+              </div>
+            </div>
+            {/* Show schedule change confirmation inline under AI message */}
+            {m.role==='assistant' && m.patches && (
+              <div className="patch-confirm">
+                <span className="patch-confirm-icon">📅</span>
+                <span className="patch-confirm-text">
+                  Calendar updated — {m.patches.length} day{m.patches.length>1?'s':''} changed
+                </span>
+                <button className="patch-confirm-btn" onClick={onGoToCalendar}>See changes →</button>
+              </div>
+            )}
+          </div>
+        ))}
+        {loading && (
+          <div className="chat-bubble bubble-ai">
+            <div className="bubble-avatar">BB</div>
+            <div className="bubble-text bubble-text-ai">
+              <div className="ai-loading"><div className="ai-spinner"/><span style={{fontSize:12,color:'var(--muted)',fontWeight:700}}>Coach is thinking...</span></div>
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef}/>
+      </div>
+
+      <div className="chat-input-row">
+        <textarea
+          className="chat-input"
+          rows={2}
+          placeholder="Talk to your coach... 'I'm exhausted' · 'skip squats this week' · 'add more volume'"
+          value={input}
+          onChange={e=>setInput(e.target.value)}
+          onKeyDown={handleKey}
+        />
+        <button className="chat-send" onClick={send} disabled={loading||!input.trim()}>
+          SEND
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// MAIN APP — schedule lives here so Coach + Calendar share it
+// ─────────────────────────────────────────────
+export default function App() {
+  const [screen, setScreen]         = useState('setup');
+  const [session, setSession]       = useState(null);
+  const [presetLift, setPresetLift] = useState(null);
+  const [schedule, setSchedule]     = useState(() => buildSchedule());
+
+  const handleStartFromCalendar = (liftName) => {
+    setPresetLift(liftName);
+    setScreen('setup');
+  };
+
+  const applySchedulePatches = useCallback((patches) => {
+    if (!patches || patches.length === 0) return;
+    setSchedule(prev => {
+      const next = prev.map(d => ({...d}));
+      patches.forEach(p => {
+        if (p.index >= 0 && p.index < next.length) {
+          next[p.index] = {
+            ...next[p.index],
+            lift:   p.lift   !== undefined ? p.lift   : next[p.index].lift,
+            type:   p.type   !== undefined ? p.type   : next[p.index].type,
+            rest:   p.rest   !== undefined ? p.rest   : next[p.index].rest,
+            cal:    p.cal    !== undefined ? p.cal    : next[p.index].cal,
+            reason: p.reason !== undefined ? p.reason : next[p.index].reason,
+            _coachPatched: true,
+          };
+        }
+      });
+      return next;
+    });
+  }, []);
+
+  const navItems = [
+    {id:'setup',    label:'Start Lift',  icon:'⊕', group:'TRAIN'},
+    {id:'live',     label:'Live Session',icon:'◉', group:'TRAIN'},
+    {id:'analysis', label:'Post-Session',icon:'◈', group:'TRAIN'},
+    {id:'coach',    label:'AI Coach',    icon:'💬', group:'TRAIN'},
+    {id:'calendar', label:'Calendar',    icon:'◫', group:'PLAN'},
+    {id:'nutrition',label:'Nutrition',   icon:'◑', group:'PLAN'},
+    {id:'progress', label:'Progress',    icon:'◬', group:'TRACK'},
+  ];
+
+  return (
+    <div className="app">
+      <nav className="topnav">
+        <div className="logo">BARBELL<span>BUDDY</span></div>
+        <div className="nav-right">
+          <div className="imu-chip"><div className="pulse-dot"/>IMU L+R LIVE</div>
+          <div style={{fontSize:11,color:'var(--muted)',fontWeight:800}}>200Hz · Sync 4ms</div>
+        </div>
+      </nav>
+      <div className="layout">
+        <aside className="sidebar">
+          {['TRAIN','PLAN','TRACK'].map(g=>(
+            <React.Fragment key={g}>
+              <div className="nav-sect">{g}</div>
+              {navItems.filter(n=>n.group===g).map(n=>(
+                <div key={n.id} className={`nav-item ${screen===n.id?'nav-active':''}`} onClick={()=>setScreen(n.id)}>
+                  <span className="ni">{n.icon}</span>{n.label}
+                </div>
+              ))}
+            </React.Fragment>
+          ))}
+          <div className="sidebar-footer">
+            <div className="user-chip">
+              <div className="avatar">JD</div>
+              <div><div className="user-name">{ATHLETE.name}</div><div className="user-sub">{ATHLETE.phase.charAt(0).toUpperCase()+ATHLETE.phase.slice(1)} · Wk {ATHLETE.phaseWeek}</div></div>
+            </div>
+          </div>
+        </aside>
+        <main className="main-content">
+          {screen==='setup'     && <StartLift    onStart={s=>{setSession(s);setScreen('live');}} presetLift={presetLift}/>}
+          {screen==='live'      && <LiveSession   session={session}/>}
+          {screen==='analysis'  && <PostSession/>}
+          {screen==='coach'     && <AICoach schedule={schedule} onApplyPatches={applySchedulePatches} onGoToCalendar={()=>setScreen('calendar')}/>}
+          {screen==='calendar'  && <CalendarScreen schedule={schedule} setSchedule={setSchedule} onStartFromCalendar={handleStartFromCalendar}/>}
+          {screen==='nutrition' && <Nutrition/>}
+          {screen==='progress'  && <Progress/>}
+        </main>
+      </div>
+    </div>
+  );
+}
