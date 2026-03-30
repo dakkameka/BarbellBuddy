@@ -36,10 +36,10 @@ Vercel Serverless (api/)   ← proxies OpenAI API
 |---|---|---|
 | React frontend (5 screens) | ✅ Done | Polished UI, AI integration working |
 | Backend API (Vercel) | ✅ Done | OpenAI proxy, secure key handling |
-| ESP32 firmware | ✅ Basic | Raw CSV streaming only, no on-device processing |
+| ESP32 firmware | ✅ Active | 50Hz CSV streaming + on-device rep detection + gyro calibration |
 | Python GUI | ✅ Done | Live plots, complementary filter, ZUPT velocity |
 | Motion estimation | ✅ Done | Runs on laptop, not on device |
-| Rep detection (on-device) | ❌ Not started | Firmware roadmap item |
+| Rep detection (on-device) | ✅ Done | Threshold + debounce state machine in firmware |
 | Velocity calc (on-device) | ❌ Not started | Firmware roadmap item |
 | BLE transmission | ❌ Not started | Needed to close hardware→frontend gap |
 | Haptic feedback | ❌ Not started | No motor hardware or code yet |
@@ -74,18 +74,25 @@ platformio device monitor      # Serial at 115200 baud
 | CS | ESP32 3.3V (pulls HIGH → enables I2C mode) |
 | SAO | ESP32 GND (sets I2C address to 0x6A) |
 
-I2C address: `0x6A`. IMU reads at 10 Hz. Streams CSV over serial at 115200 baud.
+I2C address: `0x6A`. IMU reads at **50 Hz**. Streams CSV over serial at 115200 baud.
 
 ### Serial Output Format
 
+**Sensor data (every sample at 50Hz):**
 ```
 ax,ay,az,gx,gy,gz,temp
 ```
 - `ax/ay/az` — accelerometer (g)
-- `gx/gy/gz` — gyroscope (dps)
+- `gx/gy/gz` — gyroscope (dps), gyro bias subtracted
 - `temp` — temperature (°C)
 
-One startup line (`IMU ready!`) precedes the CSV stream; the Python parser ignores it.
+**Rep summary (on each completed rep):**
+```
+REP,<rep_number>,<duration_ms>,<peak_accel_g>
+```
+Example: `REP,3,1240,1.87`
+
+Startup sequence prints two lines before CSV begins: `Calibrating gyro...`, bias values, then `IMU ready!`. The Python CSV parser ignores non-numeric lines gracefully.
 
 ### ESP32-C3 Serial Note
 
@@ -103,7 +110,7 @@ One startup line (`IMU ready!`) precedes the CSV stream; the Python parser ignor
 
 ### Firmware Roadmap
 
-1. Rep detection — threshold + peak detection on vertical accel axis
+1. ~~Rep detection~~ — ✅ done (threshold + debounce state machine, REP summary lines)
 2. Velocity calculation — double-integrate accel with bias removal, high-pass filter, ZUPT
 3. BLE transmission — stream computed metrics to companion app
 4. Haptic feedback — vibration motor triggered on velocity drop below threshold

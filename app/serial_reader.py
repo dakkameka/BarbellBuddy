@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 import serial
@@ -11,6 +11,18 @@ from serial.tools import list_ports
 
 SIMULATED_PORT_NAME = "SIMULATED"
 MAX_LINES_PER_POLL = 250
+
+
+@dataclass
+class RepEvent:
+    """A completed rep reported by the on-device rep detector.
+
+    Parsed from firmware serial lines in the format:
+        REP,<rep_number>,<duration_ms>,<peak_accel_g>
+    """
+    rep_number: int
+    duration_ms: int
+    peak_accel_g: float
 
 
 @dataclass
@@ -66,6 +78,32 @@ class SerialImuSource:
         self.bad_lines = 0
         self._session_start = 0.0
         self._serial_buffer = bytearray()
+        self._pending_rep_events: List[RepEvent] = []  # rep events waiting to be picked up by the GUI
+
+    def drain_rep_events(self) -> List[RepEvent]:
+        """Return all rep events received since the last call, then clear the queue."""
+        events = self._pending_rep_events[:]
+        self._pending_rep_events.clear()
+        return events
+
+    @staticmethod
+    def _parse_rep_line(text: str) -> Optional[RepEvent]:
+        """Try to parse a REP summary line from the firmware.
+
+        Expected format: REP,<rep_number>,<duration_ms>,<peak_accel_g>
+        Returns None if the line doesn't match.
+        """
+        parts = text.split(",")
+        if len(parts) != 4 or parts[0] != "REP":
+            return None
+        try:
+            return RepEvent(
+                rep_number=int(parts[1]),
+                duration_ms=int(parts[2]),
+                peak_accel_g=float(parts[3]),
+            )
+        except ValueError:
+            return None
 
     @property
     def is_connected(self) -> bool:
@@ -145,7 +183,14 @@ class SerialImuSource:
                     timestamp=time.perf_counter() - self._session_start,
                 )
                 if sample is None:
-                    self.bad_lines += 1
+                    # Check if this is a REP summary line from the firmware
+                    # before counting it as a bad/malformed line.
+                    text = raw_line.decode("utf-8", errors="ignore").strip()
+                    rep_event = self._parse_rep_line(text)
+                    if rep_event is not None:
+                        self._pending_rep_events.append(rep_event)
+                    else:
+                        self.bad_lines += 1
                     continue
 
                 self.good_lines += 1

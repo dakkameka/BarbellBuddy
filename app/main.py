@@ -24,11 +24,11 @@ from PySide6.QtWidgets import (
 
 try:
     from .motion_estimator import GravityCompensatedVelocityEstimator, MotionEstimate
-    from .serial_reader import ImuSample, SerialImuSource, SIMULATED_PORT_NAME
+    from .serial_reader import ImuSample, RepEvent, SerialImuSource, SIMULATED_PORT_NAME
     from .simulator import SimulatedImuSource
 except ImportError:
     from motion_estimator import GravityCompensatedVelocityEstimator, MotionEstimate
-    from serial_reader import ImuSample, SerialImuSource, SIMULATED_PORT_NAME
+    from serial_reader import ImuSample, RepEvent, SerialImuSource, SIMULATED_PORT_NAME
     from simulator import SimulatedImuSource
 
 
@@ -71,6 +71,14 @@ class ImuViewerWindow(QMainWindow):
         self.latest_sample: Optional[ImuSample] = None
         self.latest_motion_estimate: Optional[MotionEstimate] = None
         self.motion_estimator = GravityCompensatedVelocityEstimator()
+
+        # Rep counter state — updated when REP summary lines arrive from firmware
+        self._rep_count = 0
+        self._last_rep_duration_ms = 0
+        self._last_rep_peak_g = 0.0
+        self._rep_flash_timer = QTimer(self)
+        self._rep_flash_timer.setSingleShot(True)
+        self._rep_flash_timer.timeout.connect(self._clear_rep_flash)
 
         self.timestamps: Deque[float] = deque(maxlen=MAX_BUFFERED_SAMPLES)
         self.ax_data: Deque[float] = deque(maxlen=MAX_BUFFERED_SAMPLES)
@@ -200,6 +208,18 @@ class ImuViewerWindow(QMainWindow):
                 ),
             )
         )
+
+        # Rep counter group — flashes green when a new rep is detected by the firmware
+        self.rep_group = self._create_value_group(
+            "Rep Counter",
+            (
+                ("rep_count", "REPS"),
+                ("rep_duration", "TIME (ms)"),
+                ("rep_peak", "PEAK (g)"),
+            ),
+        )
+        readouts_layout.addWidget(self.rep_group)
+
         root_layout.addLayout(readouts_layout)
 
         pg.setConfigOptions(antialias=True)
@@ -354,6 +374,12 @@ class ImuViewerWindow(QMainWindow):
             self._update_info_label()
             return
 
+        # Drain any rep events that arrived alongside the sensor data.
+        # drain_rep_events() is only available on SerialImuSource, not SimulatedImuSource.
+        if hasattr(self.source, "drain_rep_events"):
+            for rep in self.source.drain_rep_events():
+                self._handle_rep_event(rep)
+
         if not samples:
             self._update_info_label()
             return
@@ -364,6 +390,28 @@ class ImuViewerWindow(QMainWindow):
         self.latest_sample = samples[-1]
         self._trim_history(self.latest_sample.timestamp)
         self._update_info_label()
+
+    def _handle_rep_event(self, rep: RepEvent) -> None:
+        """Update the rep counter display and flash the group green for 600ms."""
+        self._rep_count = rep.rep_number
+        self._last_rep_duration_ms = rep.duration_ms
+        self._last_rep_peak_g = rep.peak_accel_g
+
+        self.value_labels["rep_count"].setText(str(rep.rep_number))
+        self.value_labels["rep_duration"].setText(str(rep.duration_ms))
+        self.value_labels["rep_peak"].setText(f"{rep.peak_accel_g:.2f}")
+
+        # Flash the group box background bright green so the rep is immediately
+        # obvious on screen — useful when the laptop is across the room during testing.
+        self.rep_group.setStyleSheet(
+            "QGroupBox { background-color: #00c853; border-radius: 6px; }"
+        )
+        # Schedule the flash to clear after 600ms
+        self._rep_flash_timer.start(600)
+
+    def _clear_rep_flash(self) -> None:
+        """Reset the rep counter group background to normal after the flash fades."""
+        self.rep_group.setStyleSheet("")
 
     def change_velocity_axis(self, axis: str) -> None:
         self.motion_estimator.set_axis(axis)
@@ -514,6 +562,14 @@ class ImuViewerWindow(QMainWindow):
         self.refresh_button.setEnabled(not connected)
 
     def _clear_history(self) -> None:
+        self._rep_count = 0
+        self._last_rep_duration_ms = 0
+        self._last_rep_peak_g = 0.0
+        self._rep_flash_timer.stop()
+        self._clear_rep_flash()
+        for key in ("rep_count", "rep_duration", "rep_peak"):
+            self.value_labels[key].setText("--")
+
         self.timestamps.clear()
         self.ax_data.clear()
         self.ay_data.clear()
