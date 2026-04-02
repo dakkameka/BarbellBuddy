@@ -15,7 +15,7 @@ async function askGPT(systemPrompt, userPrompt, conversationHistory = []) {
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 10000,
+      max_tokens: 1500,
       messages,
     }),
   });
@@ -107,28 +107,28 @@ ${scheduleStr}
 
 When the athlete tells you something that should change their training — less gym time, new girlfriend, travel, injury, overtrained, wants more squats, wants to drop OHP, etc — you MUST regenerate the full 14-day schedule to reflect their new reality.
 
-ALWAYS respond with valid JSON only. No markdown, no extra text:
+ALWAYS respond with valid JSON only. No markdown, no extra text.
 
 If NO schedule change needed:
 { "reply": "...", "newSchedule": null }
 
-If schedule SHOULD change, regenerate all 14 days:
+If schedule SHOULD change, regenerate all 14 days using this MINIMAL format — no reason, no nutr fields:
 {
   "reply": "...",
   "newSchedule": [
-    { "lift": "Squat 5x5", "type": "strength", "cal": "+350", "rest": false, "reason": "Why this day has this lift", "nutr": "Nutrition note for this day" },
-    { "lift": null, "type": null, "cal": "+200", "rest": true, "reason": "Rest day reason", "nutr": "Nutrition on rest day" }
+    { "lift": "Squat 5x5", "type": "strength", "cal": "+350", "rest": false },
+    { "lift": null, "type": null, "cal": "+200", "rest": true }
   ]
 }
 
 SCHEDULE RULES:
-- Always 14 entries total
+- Always exactly 14 entries
 - Rest days: lift=null, type=null, rest=true
 - At least 2 rest days per week
-- Preserve today unless they specifically want today changed
+- Preserve today unless athlete specifically asks to change it
+- reply: warm, direct, max 40 words
 
-Valid type values: "strength", "hypertrophy", "endurance", "pr", "buildup", "deload"
-reply should be warm, direct, max 100 words.`;
+Valid type values: "strength", "hypertrophy", "endurance", "pr", "buildup", "deload"`;
 
   const raw = await askGPT(system, '', conversationHistory);
 
@@ -136,6 +136,7 @@ reply should be warm, direct, max 100 words.`;
     const clean = raw.replace(/```json|```/g, '').trim();
     return JSON.parse(clean);
   } catch {
-    return { reply: raw, newSchedule: null };
+    // If JSON is truncated/malformed, return just the reply text with no schedule change
+    return { reply: raw.replace(/[{[\]"]/g, '').slice(0, 200), newSchedule: null };
   }
 }
