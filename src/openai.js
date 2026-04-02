@@ -15,6 +15,7 @@ async function askGPT(systemPrompt, userPrompt, conversationHistory = []) {
     },
     body: JSON.stringify({
       model: MODEL,
+      max_tokens: 1500,
       messages,
     }),
   });
@@ -31,9 +32,9 @@ async function askGPT(systemPrompt, userPrompt, conversationHistory = []) {
 export async function getPostSessionDebrief(s) {
   const system = `You are an expert strength coach analyzing barbell IMU sensor data.
 Respond with EXACTLY 3 bullet points:
-• [performance observation]
-• [form/imbalance observation]
-• [next session progressive overload recommendation]
+- [performance observation]
+- [form/imbalance observation]
+- [next session progressive overload recommendation]
 Each bullet under 25 words. Be specific and data-driven. No fluff.`;
 
   const user = `Session data:
@@ -59,9 +60,9 @@ Bar tilt: ${d.tilt}° left | Phase: ${d.nutritionPhase}`;
 
 export async function getCalendarAdjustment(d) {
   const system = `You are a periodization expert. Respond with EXACTLY 3 bullet points:
-• [load recommendation for next session]
-• [exercise swap or addition based on data]
-• [recovery priority this week]
+- [load recommendation for next session]
+- [exercise swap or addition based on data]
+- [recovery priority this week]
 Each bullet under 30 words. Reference the numbers directly.`;
 
   const user = `Athlete schedule data:
@@ -78,8 +79,8 @@ Upcoming schedule: ${d.upcomingSchedule || 'standard program'}`;
 export async function getNutritionAdvice(d) {
   const system = `You are a sports nutritionist for strength athletes.
 Respond with EXACTLY 2 bullet points:
-• [specific advice for today based on the numbers]
-• [phase/long-term strategy advice]
+- [specific advice for today based on the numbers]
+- [phase/long-term strategy advice]
 Each bullet under 25 words. Reference actual numbers.`;
 
   const user = `Nutrition data:
@@ -106,28 +107,28 @@ ${scheduleStr}
 
 When the athlete tells you something that should change their training — less gym time, new girlfriend, travel, injury, overtrained, wants more squats, wants to drop OHP, etc — you MUST regenerate the full 14-day schedule to reflect their new reality.
 
-ALWAYS respond with valid JSON only. No markdown, no extra text:
+ALWAYS respond with valid JSON only. No markdown, no extra text.
 
 If NO schedule change needed:
 { "reply": "...", "newSchedule": null }
 
-If schedule SHOULD change, regenerate all 14 days:
+If schedule SHOULD change, regenerate all 14 days using this MINIMAL format — no reason, no nutr fields:
 {
   "reply": "...",
   "newSchedule": [
-    { "lift": "Squat 5x5", "type": "strength", "cal": "+350", "rest": false, "reason": "Why this day has this lift", "nutr": "Nutrition note for this day" },
-    { "lift": null, "type": null, "cal": "+200", "rest": true, "reason": "Rest day reason", "nutr": "Nutrition on rest day" }
+    { "lift": "Squat 5x5", "type": "strength", "cal": "+350", "rest": false },
+    { "lift": null, "type": null, "cal": "+200", "rest": true }
   ]
 }
 
 SCHEDULE RULES:
-- Always 14 entries total
+- Always exactly 14 entries
 - Rest days: lift=null, type=null, rest=true
 - At least 2 rest days per week
-- Preserve today unless they specifically want today changed
+- Preserve today unless athlete specifically asks to change it
+- reply: warm, direct, max 40 words
 
-Valid type values: "strength", "hypertrophy", "endurance", "pr", "buildup", "deload"
-reply should be warm, direct, max 100 words.`;
+Valid type values: "strength", "hypertrophy", "endurance", "pr", "buildup", "deload"`;
 
   const raw = await askGPT(system, '', conversationHistory);
 
@@ -135,6 +136,7 @@ reply should be warm, direct, max 100 words.`;
     const clean = raw.replace(/```json|```/g, '').trim();
     return JSON.parse(clean);
   } catch {
-    return { reply: raw, newSchedule: null };
+    // If JSON is truncated/malformed, return just the reply text with no schedule change
+    return { reply: raw.replace(/[{[\]"]/g, '').slice(0, 200), newSchedule: null };
   }
 }
