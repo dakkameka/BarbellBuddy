@@ -15,7 +15,7 @@ async function askGPT(systemPrompt, userPrompt, conversationHistory = []) {
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 5000,
+      max_tokens: 10000,
       messages,
     }),
   });
