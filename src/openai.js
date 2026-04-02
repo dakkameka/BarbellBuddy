@@ -15,6 +15,7 @@ async function askGPT(systemPrompt, userPrompt, conversationHistory = []) {
     },
     body: JSON.stringify({
       model: MODEL,
+      max_tokens: 3000,
       messages,
     }),
   });
@@ -31,9 +32,9 @@ async function askGPT(systemPrompt, userPrompt, conversationHistory = []) {
 export async function getPostSessionDebrief(s) {
   const system = `You are an expert strength coach analyzing barbell IMU sensor data.
 Respond with EXACTLY 3 bullet points:
-• [performance observation]
-• [form/imbalance observation]
-• [next session progressive overload recommendation]
+- [performance observation]
+- [form/imbalance observation]
+- [next session progressive overload recommendation]
 Each bullet under 25 words. Be specific and data-driven. No fluff.`;
 
   const user = `Session data:
@@ -59,9 +60,9 @@ Bar tilt: ${d.tilt}° left | Phase: ${d.nutritionPhase}`;
 
 export async function getCalendarAdjustment(d) {
   const system = `You are a periodization expert. Respond with EXACTLY 3 bullet points:
-• [load recommendation for next session]
-• [exercise swap or addition based on data]
-• [recovery priority this week]
+- [load recommendation for next session]
+- [exercise swap or addition based on data]
+- [recovery priority this week]
 Each bullet under 30 words. Reference the numbers directly.`;
 
   const user = `Athlete schedule data:
@@ -78,8 +79,8 @@ Upcoming schedule: ${d.upcomingSchedule || 'standard program'}`;
 export async function getNutritionAdvice(d) {
   const system = `You are a sports nutritionist for strength athletes.
 Respond with EXACTLY 2 bullet points:
-• [specific advice for today based on the numbers]
-• [phase/long-term strategy advice]
+- [specific advice for today based on the numbers]
+- [phase/long-term strategy advice]
 Each bullet under 25 words. Reference actual numbers.`;
 
   const user = `Nutrition data:
