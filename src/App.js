@@ -306,13 +306,14 @@ function ProfileScreen({ athlete, onSave }) {
 // START LIFT
 // ─────────────────────────────────────────────
 function StartLift({ onStart, presetLift, athlete }) {
+
   const lifts = [
-    { name:'BACK SQUAT',  icon:'🏋️', pct:0.79, color:'blue',   rm:athlete.squat1RM },
-    { name:'BENCH PRESS', icon:'💪', pct:0.72, color:'purple', rm:athlete.bench1RM },
-    { name:'DEADLIFT',    icon:'⚡', pct:0.86, color:'green',  rm:athlete.deadlift1RM },
-    { name:'OHP',         icon:'🎯', pct:0.69, color:'orange', rm:athlete.ohp1RM },
-    { name:'ROMANIAN DL', icon:'🔥', pct:0.70, color:'yellow', rm:Math.round(athlete.deadlift1RM * 0.56) },
-    { name:'FRONT SQUAT', icon:'⭐', pct:0.75, color:'teal',   rm:Math.round(athlete.squat1RM * 0.79) },
+  { name:'BACK SQUAT',  icon:'/backsquat.png',   pct:0.79, color:'blue',   rm:athlete.squat1RM },
+  { name:'BENCH PRESS', icon:'/bench.png',        pct:0.72, color:'purple', rm:athlete.bench1RM },
+  { name:'DEADLIFT',    icon:'/deadlift.png',     pct:0.86, color:'green',  rm:athlete.deadlift1RM },
+  { name:'OHP',         icon:'/overhead.png',     pct:0.69, color:'orange', rm:athlete.ohp1RM },
+  { name:'ROMANIAN DL', icon:'/romanian.png',     pct:0.70, color:'yellow', rm:Math.round(athlete.deadlift1RM * 0.56) },
+  { name:'FRONT SQUAT', icon:'/frontsquat.png',   pct:0.75, color:'teal',   rm:Math.round(athlete.squat1RM * 0.79) },
   ];
 
   const guessIdx = () => {
@@ -344,7 +345,9 @@ function StartLift({ onStart, presetLift, athlete }) {
       <div className="lift-grid">
         {lifts.map((l,i) => (
           <div key={i} className={`lift-btn ${sel===i?`sel-${l.color}`:''}`} onClick={() => pick(i)}>
-            <div className="lift-icon">{l.icon}</div>
+            <div className="lift-icon">
+              <img src={l.icon} alt={l.name} style={{ width: 40, height: 40, objectFit: 'contain' }} />
+            </div>
             <div className="lift-name">{l.name}</div>
             <div className="lift-pr">1RM: {l.rm} lbs</div>
           </div>
