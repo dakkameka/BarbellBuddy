@@ -208,7 +208,13 @@ body { font-family: var(--fb); color: var(--text); overflow: hidden; height: 100
   transition:all 0.2s; color:var(--text); box-shadow:0 2px 10px rgba(0,0,0,0.06);
 }
 .lift-btn:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(124,0,255,0.15); }
-.lift-icon { font-size:26px; margin-bottom:5px; }
+.lift-icon { 
+  margin-bottom: 8px; 
+  height: 80px; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+}
 .lift-name { font-family:var(--fd); font-size:15px; letter-spacing:1px; color:var(--text); }
 .lift-pr   { font-size:10px; color:var(--muted); font-weight:700; }
 .sel-blue   { border-color:var(--neon-blue);   background:rgba(0,149,255,0.1);   box-shadow:0 0 18px rgba(0,149,255,0.25); }
