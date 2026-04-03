@@ -538,7 +538,7 @@ function StartLift({ onStart, presetLift, athlete }) {
       <div className="lift-grid">
         {lifts.map((l,i) => (
           <div key={i} className={`lift-btn ${sel===i?`sel-${l.color}`:''}`} onClick={() => pick(i)}>
-            <div className="lift-icon"><img src={l.icon} alt={l.name} style={{ width: 72, height: 72, objectFit: 'contain' }} /></div>
+            <div className="lift-icon"><img src={l.icon} alt={l.name} style={{ width: 160, height: 160, objectFit: 'contain' }} /></div>
             <div className="lift-name">{l.name}</div>
             <div className="lift-pr">1RM: {l.rm} lbs</div>
           </div>
@@ -1312,7 +1312,7 @@ export default function App() {
     <div className="app">
       <nav className="topnav">
         <div className="logo" style={{display:'flex',alignItems:'center',gap:10}}>
-          <img src="/logo.png" alt="Coach Nova" style={{width:52,height:52,objectFit:'contain'}}/>
+          <img src="/logo.png" alt="Coach Nova" style={{width:100,height:100,objectFit:'contain'}}/>
           COACH<span>NOVA</span>
         </div>
         <div className="nav-right">
