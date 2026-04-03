@@ -50,64 +50,14 @@ const WORKOUT_TYPES = {
   recomp:      { label:'BODY RECOMP',     color:'var(--neon-orange)', bg:'rgba(255,107,53,0.08)', border:'rgba(255,107,53,0.3)' },
 };
 
-// ── CYCLE PHASE SCIENCE ──────────────────────
+// ── CYCLE PHASE INFO (for display/education only — not auto-calculated) ──
 const CYCLE_PHASES = {
-  menstrual:    { days:[1,5],   label:'Menstrual',    color:'var(--neon-pink)',   borderClass:'cal-border-menstrual',    advice:'Lower intensity recommended. Focus on mobility and light upper body. Iron-rich nutrition priority.' },
-  follicular:   { days:[6,13],  label:'Follicular',   color:'var(--neon-green)',  borderClass:'cal-border-follicular',   advice:'Estrogen rising — strength and power training peaks here. Push PRs! High carb tolerance.' },
-  ovulatory:    { days:[14,16], label:'Ovulatory',    color:'var(--neon-yellow)', borderClass:'cal-border-ovulatory',   advice:'Peak strength window. Best time for 1RM attempts. High energy, high recovery capacity.' },
-  luteal_early: { days:[17,22], label:'Luteal (Early)',color:'var(--neon-orange)', borderClass:'cal-border-luteal-early', advice:'Progesterone rising. Shift to hypertrophy volume. Higher protein needs. Slight fatigue normal.' },
-  luteal_late:  { days:[23,28], label:'Luteal (Late)', color:'var(--neon-purple)', borderClass:'cal-border-luteal-late',  advice:'PMS window. Reduce intensity. Prioritize rest days and recovery. Magnesium and B6 help symptoms.' },
+  menstrual:    { label:'Menstrual',     color:'var(--neon-pink)',   advice:'Lower intensity recommended. Focus on mobility and light upper body. Iron-rich nutrition priority.' },
+  follicular:   { label:'Follicular',    color:'var(--neon-green)',  advice:'Estrogen rising — strength and power training peaks here. Push PRs! High carb tolerance.' },
+  ovulatory:    { label:'Ovulatory',     color:'var(--neon-yellow)', advice:'Peak strength window. Best time for 1RM attempts. High energy, high recovery capacity.' },
+  luteal_early: { label:'Luteal (Early)',color:'var(--neon-orange)', advice:'Progesterone rising. Shift to hypertrophy volume. Higher protein needs. Slight fatigue normal.' },
+  luteal_late:  { label:'Luteal (Late)', color:'var(--neon-purple)', advice:'PMS window. Reduce intensity. Prioritize rest days and recovery. Magnesium and B6 help symptoms.' },
 };
-
-function getCyclePhase(cycleDay) {
-  if (!cycleDay) return null;
-  const d = ((cycleDay - 1) % 28) + 1;
-  if (d >= 1  && d <= 5)  return 'menstrual';
-  if (d >= 6  && d <= 13) return 'follicular';
-  if (d >= 14 && d <= 16) return 'ovulatory';
-  if (d >= 17 && d <= 22) return 'luteal_early';
-  return 'luteal_late';
-}
-
-// Given an array of period start date strings, compute what cycle day today is
-function computeCycleDayFromLog(periodLog) {
-  if (!periodLog || periodLog.length === 0) return null;
-  const today = new Date(); today.setHours(0,0,0,0);
-  // Find most recent period start on or before today
-  const sorted = [...periodLog]
-    .map(d => { const dt = new Date(d); dt.setHours(0,0,0,0); return dt; })
-    .filter(d => d <= today)
-    .sort((a,b) => b - a);
-  if (sorted.length === 0) return null;
-  const lastStart = sorted[0];
-  const diff = Math.floor((today - lastStart) / (1000*60*60*24));
-  return (diff % 28) + 1;
-}
-
-// Compute cycle day for a given calendar date from period log
-function computeCycleDayForDate(date, periodLog) {
-  if (!periodLog || periodLog.length === 0) return null;
-  const d = new Date(date); d.setHours(0,0,0,0);
-  const sorted = [...periodLog]
-    .map(s => { const dt = new Date(s); dt.setHours(0,0,0,0); return dt; })
-    .filter(dt => dt <= d)
-    .sort((a,b) => b - a);
-  if (sorted.length === 0) {
-    // If date is before first logged period, try projecting backward
-    const allSorted = [...periodLog]
-      .map(s => { const dt = new Date(s); dt.setHours(0,0,0,0); return dt; })
-      .sort((a,b) => a - b);
-    if (allSorted.length === 0) return null;
-    // project: first period - 28 day cycles backward
-    const first = allSorted[0];
-    const diff = Math.floor((first - d) / (1000*60*60*24));
-    if (diff > 60) return null; // too far back
-    return ((28 - (diff % 28)) % 28) + 1;
-  }
-  const lastStart = sorted[0];
-  const diff = Math.floor((d - lastStart) / (1000*60*60*24));
-  return (diff % 28) + 1;
-}
 
 // ── ACCESSORY EXERCISES BY EQUIPMENT ─────────
 const ACCESSORIES = {
@@ -171,25 +121,20 @@ function getGoalConfig(goal) {
 }
 
 // ── BUILD SCHEDULE ────────────────────────────
-// All goals now have varied day types (strength, hypertrophy, recomp, deload) — variety is essential
-// even for strength-focused athletes. periodLog is used for cycle phase if athlete is female.
+// periodLog is used ONLY to mark isPeriod on each day — no cycle day math, no projection.
 function buildSchedule(athlete, periodLog = []) {
   const today = new Date();
   today.setHours(0,0,0,0);
   const goal = getGoalConfig(athlete.goal);
-  const isFemale = athlete.gender === 'female';
 
   const sqW  = Math.round(athlete.squat1RM    * goal.mainPct / 5) * 5;
   const bnW  = Math.round(athlete.bench1RM    * goal.mainPct / 5) * 5;
   const dlW  = Math.round(athlete.deadlift1RM * (goal.mainPct + 0.05) / 5) * 5;
   const ohpW = Math.round(athlete.ohp1RM      * (goal.mainPct - 0.05) / 5) * 5;
 
-  // All programs mix strength, hypertrophy, recomp, and deload/recovery days.
-  // The ratio shifts by goal, but variety always exists.
   let liftPattern;
 
   if (athlete.goal === 'strength' || athlete.goal === 'powerlifting') {
-    // Strength primary, but ~30% hypertrophy/recomp, one deload per 2 weeks
     liftPattern = [
       { lift:`Squat ${goal.mainSets}`,    type:'strength',    cal:'+350', rest:false, baseKey:'squat'    },
       { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
@@ -207,7 +152,6 @@ function buildSchedule(athlete, periodLog = []) {
       { lift:`Deload Squat`,              type:'deload',      cal:'+150', rest:false, baseKey:'squat'    },
     ];
   } else if (athlete.goal === 'hypertrophy') {
-    // Hypertrophy primary, ~20% strength days to keep neural drive, deload end of cycle
     liftPattern = [
       { lift:`Squat ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'squat'    },
       { lift:`Bench ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'bench'    },
@@ -259,7 +203,6 @@ function buildSchedule(athlete, periodLog = []) {
       { lift:`Active Recovery`,           type:'recovery',    cal:'+100', rest:false, baseKey:'upper'    },
     ];
   } else {
-    // athletic / default
     liftPattern = [
       { lift:`Squat ${goal.mainSets}`,    type:'strength',    cal:'+350', rest:false, baseKey:'squat'    },
       { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
@@ -284,100 +227,54 @@ function buildSchedule(athlete, periodLog = []) {
   for (let i = 0; i < 14; i++) {
     const date = new Date(today);
     date.setDate(today.getDate() + i);
+    const dateKey = date.toDateString();
     const pattern = liftPattern[i % liftPattern.length];
 
-    // Compute cycle data for this day from periodLog
-    let thisCycleDay = null;
-    let cyclePhaseKey = null;
-    let cyclePhaseInfo = null;
-    if (isFemale && periodLog.length > 0) {
-      thisCycleDay = computeCycleDayForDate(date, periodLog);
-      if (thisCycleDay) {
-        cyclePhaseKey = getCyclePhase(thisCycleDay);
-        cyclePhaseInfo = CYCLE_PHASES[cyclePhaseKey];
-      }
-    }
+    // ── MANUAL period marking only — no cycle day math ──
+    const isFemale = athlete.gender === 'female';
+    const isPeriod = isFemale && periodLog.includes(dateKey);
 
-    // Cycle-based lift overrides for females
-    let lift = pattern.lift;
-    let type = pattern.type;
-    let cal  = pattern.cal;
-    let rest = pattern.rest;
-    let cycleNote = null;
-
-    if (isFemale && cyclePhaseKey && !rest) {
-      if (cyclePhaseKey === 'menstrual') {
-        if (lift && /squat|deadlift/i.test(lift)) {
-          lift = 'Upper Body (light)';
-          type = 'recovery';
-          cal  = '+150';
-          cycleNote = 'Swapped to light upper — menstrual phase. Low intensity recommended.';
-        }
-      } else if (cyclePhaseKey === 'follicular' || cyclePhaseKey === 'ovulatory') {
-        if (type === 'hypertrophy') type = 'strength';
-        if (cyclePhaseKey === 'ovulatory' && lift && !lift.includes('PR')) lift = lift + ' (PR window)';
-        cycleNote = cyclePhaseKey === 'ovulatory'
-          ? 'Ovulatory peak — best time for 1RM attempts. Estrogen + LH surge = max power.'
-          : 'Follicular phase — high estrogen = great strength gains. Push intensity.';
-      } else if (cyclePhaseKey === 'luteal_late') {
-        if (!rest) {
-          type = 'recovery';
-          cycleNote = 'Late luteal phase — reduce load by 10-15%. Higher fatigue is normal, not weakness.';
-        }
-      }
-    }
-
-    const accessories = (!rest && pattern.baseKey)
+    const accessories = (!pattern.rest && pattern.baseKey)
       ? getAccessoriesForLift(pattern.baseKey, athlete.equipment).map(a => ({ ...a, done: false }))
       : [];
 
     let reason = '';
-    if (rest) {
+    if (pattern.rest) {
       reason = 'CNS recovery day. Protein stays high, light movement only.';
-    } else if (cycleNote) {
-      reason = cycleNote;
     } else {
       const gc = getGoalConfig(athlete.goal);
-      const typeLabel = type ? (WORKOUT_TYPES[type]?.label || type) : 'General';
+      const typeLabel = pattern.type ? (WORKOUT_TYPES[pattern.type]?.label || pattern.type) : 'General';
       reason = `${typeLabel} day — ${gc.note}. Phase week ${athlete.phaseWeek}/${athlete.phaseTotalWeeks}. Variety in day types maximizes long-term adaptation.`;
     }
 
     let nutr = '';
-    if (rest) {
+    if (pattern.rest) {
       nutr = 'Recovery day. Keep protein at 1g/lb bodyweight. Hydration priority.';
-    } else if (cyclePhaseKey === 'menstrual') {
-      nutr = 'Iron-rich foods today (spinach, red meat, lentils). Anti-inflammatory diet reduces cramping.';
-    } else if (cyclePhaseKey === 'follicular' || cyclePhaseKey === 'ovulatory') {
-      nutr = 'High carb tolerance — load 400g+ carbs. Estrogen improves insulin sensitivity.';
-    } else if (cyclePhaseKey === 'luteal_early' || cyclePhaseKey === 'luteal_late') {
-      nutr = 'Higher protein need in luteal phase (+20g). Magnesium helps with symptoms. Reduce refined carbs.';
     } else {
       nutr = athlete.phase === 'bulk'
-        ? `Bulk surplus ${cal} kcal. Pre-workout: complex carbs 90 min before.`
+        ? `Bulk surplus ${pattern.cal} kcal. Pre-workout: complex carbs 90 min before.`
         : athlete.phase === 'cut'
         ? `Deficit day. Keep protein high (${athlete.bodyweight}g). Time carbs around session.`
         : 'Maintenance calories. Balanced macros around training window.';
     }
 
     days.push({
-      lift,
-      type,
-      cal,
-      rest,
+      lift: pattern.lift,
+      type: pattern.type,
+      cal: pattern.cal,
+      rest: pattern.rest,
       reason,
       nutr,
       baseKey: pattern.baseKey,
       accessories,
-      cycleDay: thisCycleDay,
-      cyclePhaseKey,
-      cyclePhaseInfo,
+      isPeriod,
       date,
       dayNum: date.getDate(),
       month: date.getMonth(),
       year: date.getFullYear(),
       weekday: date.getDay(),
       today: i === 0,
-      dateKey: date.toDateString(),
+      dateKey,
       dateLabel: `${MONTH_NAMES_LOCAL[date.getMonth()]} ${date.getDate()}`,
     });
   }
@@ -488,7 +385,7 @@ function ProfileScreen({ athlete, onSave }) {
           </div>
           {form.gender === 'female' && (
             <div style={{fontSize:11,color:'var(--neon-pink)',fontWeight:700,padding:'10px 12px',background:'rgba(255,45,155,0.06)',borderRadius:8,border:'1px solid rgba(255,45,155,0.2)'}}>
-              Track your cycle in the Nutrition tab for personalized training adjustments.
+              Track your period in the Nutrition tab — tap each day individually to mark it.
             </div>
           )}
         </div>
@@ -810,11 +707,9 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
     }));
   };
 
-  // Determine border class for a calendar day
+  // Border class: period days always get pink border; otherwise training phase
   const getDayBorderClass = (d) => {
-    if (isFemale && d.cyclePhaseKey) {
-      return CYCLE_PHASES[d.cyclePhaseKey]?.borderClass || '';
-    }
+    if (d.isPeriod) return 'cal-border-menstrual';
     if (d.rest) return 'cal-border-rest';
     return phase === 'bulk' ? 'cal-border-bulk' : phase === 'cut' ? 'cal-border-cut' : 'cal-border-maintain';
   };
@@ -822,7 +717,6 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
   const phaseCalLabel = phase==='cut'?'pill-cut-cal':'pill-bulk-cal';
   const firstDayOfWeek = schedule[0]?.weekday ?? 0;
   const gc = getGoalConfig(athlete.goal);
-  const todayCycleDay = isFemale ? computeCycleDayFromLog(periodLog) : null;
 
   return (
     <div className="screen">
@@ -836,25 +730,17 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
           <div><div style={{fontSize:8,letterSpacing:2,color:'var(--muted)',fontWeight:800}}>PROGRAM</div><div style={{fontFamily:'Bebas Neue',fontSize:16,color:'var(--neon-blue)',letterSpacing:1}}>{gc.mainSets}</div></div>
           <div><div style={{fontSize:8,letterSpacing:2,color:'var(--muted)',fontWeight:800}}>EQUIPMENT</div><div style={{fontFamily:'Bebas Neue',fontSize:16,color:'var(--neon-teal)',letterSpacing:1}}>{athlete.equipment.toUpperCase()}</div></div>
           <div><div style={{fontSize:8,letterSpacing:2,color:'var(--muted)',fontWeight:800}}>PHASE</div><div style={{fontFamily:'Bebas Neue',fontSize:16,color:'var(--neon-green)',letterSpacing:1}}>WK {athlete.phaseWeek}/{athlete.phaseTotalWeeks}</div></div>
-          {isFemale && todayCycleDay && (
-            <div style={{marginLeft:'auto'}}>
-              <div style={{fontSize:8,letterSpacing:2,color:'var(--neon-pink)',fontWeight:800}}>CYCLE PHASE</div>
-              <div style={{fontFamily:'Bebas Neue',fontSize:14,color:'var(--neon-pink)',letterSpacing:1}}>
-                {CYCLE_PHASES[getCyclePhase(todayCycleDay)]?.label} · Day {todayCycleDay}
-              </div>
+          {isFemale && periodLog.length > 0 && (
+            <div style={{marginLeft:'auto',fontSize:11,color:'var(--neon-pink)',fontWeight:700}}>
+              {periodLog.length} period day{periodLog.length>1?'s':''} marked · tap P on any day to edit
             </div>
           )}
-          {isFemale && !todayCycleDay && (
-            <div style={{marginLeft:'auto',fontSize:11,color:'var(--neon-pink)',fontWeight:700}}>
-              Track period in Nutrition tab for cycle-adjusted training
+          {isFemale && periodLog.length === 0 && (
+            <div style={{marginLeft:'auto',fontSize:11,color:'var(--muted)',fontWeight:700}}>
+              Tap <span style={{color:'var(--neon-pink)'}}>P</span> on any day to mark period days
             </div>
           )}
         </div>
-        {isFemale && todayCycleDay && (
-          <div style={{marginTop:8,fontSize:11,color:'var(--neon-pink)',fontWeight:700,borderTop:'1px solid rgba(255,45,155,0.15)',paddingTop:8}}>
-            {CYCLE_PHASES[getCyclePhase(todayCycleDay)]?.advice}
-          </div>
-        )}
       </div>
 
       {/* Phase toggle */}
@@ -900,13 +786,7 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
           ['rgba(255,107,53,0.6)','Cut'],
           ['rgba(77,184,255,0.5)','Maintain'],
           ['rgba(255,255,255,0.15)','Rest'],
-          ...(isFemale ? [
-            ['rgba(255,215,0,0.75)','Ovulatory'],
-            ['rgba(0,255,179,0.65)','Follicular'],
-            ['rgba(255,45,155,0.7)','Menstrual'],
-            ['rgba(185,77,255,0.65)','Late Luteal'],
-            ['rgba(255,107,53,0.6)','Early Luteal'],
-          ] : []),
+          ...(isFemale ? [['rgba(255,45,155,0.7)','Period']] : []),
         ].map(([c,lbl])=>(
           <div key={lbl} className="leg-item">
             <div className="leg-border" style={{borderColor:c}}/>
@@ -919,7 +799,7 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
       <div className="gcard gc-purple" style={{marginBottom:14}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
           <div style={{fontFamily:'Bebas Neue',fontSize:20,letterSpacing:2,color:'var(--text)'}}>{MONTH_NAMES[currentMonth].toUpperCase()} {currentYear}</div>
-          <span style={{fontSize:10,color:'var(--muted)',fontWeight:800}}>Tap day for details · X block</span>
+          <span style={{fontSize:10,color:'var(--muted)',fontWeight:800}}>Tap day for details · X block{isFemale?' · P period':''}</span>
         </div>
         <div className="cal-grid">
           {['SUN','MON','TUE','WED','THU','FRI','SAT'].map(d=><div key={d} className="cal-dh">{d}</div>)}
@@ -931,8 +811,6 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
             const totalAcc = day.accessories?.length || 0;
             const doneAcc  = Object.values(dayAccDone).filter(Boolean).length;
             const borderClass = getDayBorderClass(day);
-            // Check if this date has a period log entry
-            const hasPeriodMark = periodLog.includes(day.dateKey);
             return (
               <div key={day.dateKey}
                 className={`cal-day ${borderClass} ${day.today?'cal-today':''} ${isBlocked?'cal-blocked':''}`}
@@ -947,7 +825,7 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
                   :<span className="cpill pill-rest-cal">{day._coachRebuilt?'AI Rest':'Rest'}</span>}
                 {!isBlocked&&day.cal&&<span className={`cpill ${phaseCalLabel}`}>{day.cal} kcal</span>}
                 {!isBlocked&&wtype&&<span className="cpill" style={{background:wtype.bg,color:wtype.color,fontSize:7}}>{wtype.label}</span>}
-                {hasPeriodMark&&<span className="cpill pill-period">Period</span>}
+                {day.isPeriod&&<span className="cpill pill-period">Period</span>}
                 {!isBlocked && totalAcc > 0 && (
                   <span className="cpill" style={{background: doneAcc===totalAcc?'rgba(0,255,179,0.15)':'rgba(255,255,255,0.06)', color: doneAcc===totalAcc?'var(--neon-green)':'var(--muted)', fontSize:7}}>
                     {doneAcc===totalAcc?'Done ':''}{doneAcc}/{totalAcc} acc
@@ -956,11 +834,11 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
                 {!isBlocked&&day.lift&&(
                   <button className="cal-start-btn" title="Start this lift" onClick={e=>{e.stopPropagation();onStartFromCalendar(day.lift);}}>+</button>
                 )}
-                {/* Period start button for females — positioned next to start button */}
+                {/* Period toggle button — females only */}
                 {isFemale && !isBlocked && (
                   <button
-                    className={`cal-period-btn ${hasPeriodMark?'cal-period-btn-active':''}`}
-                    title={hasPeriodMark?'Remove period mark':'Mark as period start'}
+                    className={`cal-period-btn ${day.isPeriod?'cal-period-btn-active':''}`}
+                    title={day.isPeriod?'Remove period mark':'Mark as period day'}
                     onClick={e=>{e.stopPropagation();onMarkPeriod(day.dateKey);}}
                   >P</button>
                 )}
@@ -996,13 +874,11 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
               {modalDay.today?' · TODAY':''} · {phase.charAt(0).toUpperCase()+phase.slice(1)} Phase
             </div>
 
-            {/* Cycle phase banner in modal */}
-            {isFemale && modalDay.cyclePhaseInfo && (
+            {/* Period indicator in modal */}
+            {isFemale && modalDay.isPeriod && (
               <div style={{background:'rgba(255,45,155,0.08)',border:'1px solid rgba(255,45,155,0.25)',borderRadius:10,padding:'10px 12px',marginBottom:12}}>
-                <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-pink)',fontWeight:800,marginBottom:4}}>
-                  {modalDay.cyclePhaseInfo.label.toUpperCase()} · CYCLE DAY {modalDay.cycleDay}
-                </div>
-                <div style={{fontSize:12,fontWeight:700,color:'var(--text)'}}>{modalDay.cyclePhaseInfo.advice}</div>
+                <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-pink)',fontWeight:800,marginBottom:4}}>PERIOD DAY</div>
+                <div style={{fontSize:12,fontWeight:700,color:'var(--text)'}}>You marked this as a period day. Lower intensity is recommended — listen to your body.</div>
               </div>
             )}
 
@@ -1060,12 +936,12 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
                   Start This Lift
                 </button>
               )}
-              {/* Period button in modal for females */}
+              {/* Period toggle in modal for females */}
               {isFemale && (
                 <button
-                  className={`mbtn ${periodLog.includes(modalDay.dateKey)?'mbtn-period-remove':'mbtn-period'}`}
+                  className={`mbtn ${modalDay.isPeriod?'mbtn-period-remove':'mbtn-period'}`}
                   onClick={()=>{onMarkPeriod(modalDay.dateKey);}}>
-                  {periodLog.includes(modalDay.dateKey) ? 'Remove period mark' : 'Mark period start'}
+                  {modalDay.isPeriod ? 'Remove period mark' : 'Mark as period day'}
                 </button>
               )}
             </div>
@@ -1183,7 +1059,7 @@ ${athlete.injuryNotes ? `Injury notes: ${athlete.injuryNotes}` : ''}
 }
 
 // ─────────────────────────────────────────────
-// NUTRITION — includes cycle tracking for females
+// NUTRITION — manual period tracking only
 // ─────────────────────────────────────────────
 function Nutrition({ athlete, periodLog, onMarkPeriod }) {
   const [surplus, setSurplus] = useState(athlete.phase==='bulk'?350:athlete.phase==='cut'?-300:0);
@@ -1204,23 +1080,20 @@ function Nutrition({ athlete, periodLog, onMarkPeriod }) {
     return            {label:'MAINTENANCE', tip:'Body recomposition', color:'var(--neon-blue)', badge:'MAINTAIN', cls:'badge-blue'};
   };
   const info = getInfo(surplus);
-
   const isFemale = athlete.gender === 'female';
-  const todayCycleDay = isFemale ? computeCycleDayFromLog(periodLog) : null;
-  const currentPhaseKey = todayCycleDay ? getCyclePhase(todayCycleDay) : null;
-  const currentPhase = currentPhaseKey ? CYCLE_PHASES[currentPhaseKey] : null;
 
-  // Period log calendar — show last 35 days
+  // Period log calendar — show last 42 days (6 weeks) for manual marking
   const periodCalDays = useMemo(() => {
     const days = [];
     const now = new Date(); now.setHours(0,0,0,0);
-    for (let i = 34; i >= 0; i--) {
+    for (let i = 41; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(now.getDate() - i);
       days.push({
         date: d,
         dateKey: d.toDateString(),
         dayNum: d.getDate(),
+        month: d.getMonth(),
         weekday: d.getDay(),
         isToday: i === 0,
         isPeriod: periodLog.includes(d.toDateString()),
@@ -1228,6 +1101,9 @@ function Nutrition({ athlete, periodLog, onMarkPeriod }) {
     }
     return days;
   }, [periodLog]);
+
+  // How many period days are marked in the last 42 days
+  const markedCount = periodCalDays.filter(d => d.isPeriod).length;
 
   const fetchNutrAI = useCallback(async () => {
     setAiLoading(true);
@@ -1258,82 +1134,103 @@ function Nutrition({ athlete, periodLog, onMarkPeriod }) {
         <div className="sc sc-green"><div className="sl">Fat</div><div className="sv">{fat}<span className="su">g</span></div><div className="sd" style={{color:fat/fatTarget>0.8?'var(--neon-green)':'var(--neon-orange)'}}>Target: {fatTarget}g</div></div>
       </div>
 
-      {/* ── CYCLE TRACKING (females only) ── */}
+      {/* ── PERIOD TRACKER (females only) — fully manual ── */}
       {isFemale && (
         <div className="gcard gc-purple" style={{marginBottom:14}}>
           <div className="panel-header">
-            <span className="panel-title">CYCLE TRACKING</span>
-            {currentPhase && <span className="badge badge-pink">{currentPhase.label} · Day {todayCycleDay}</span>}
+            <span className="panel-title">PERIOD TRACKER</span>
+            {markedCount > 0 && (
+              <span className="badge badge-pink">{markedCount} day{markedCount>1?'s':''} marked</span>
+            )}
           </div>
 
-          {/* Current phase status */}
-          {currentPhase ? (
-            <div className={`cycle-phase-card cycle-phase-card-${currentPhaseKey?.replace('_','-')}`} style={{marginBottom:12}}>
-              <div style={{flex:1}}>
-                <div style={{fontFamily:'Bebas Neue',fontSize:18,letterSpacing:2,color:currentPhase.color}}>{currentPhase.label.toUpperCase()} — Day {todayCycleDay}</div>
-                <div style={{fontSize:11,fontWeight:700,color:'var(--text)',marginTop:4,lineHeight:1.5}}>{currentPhase.advice}</div>
-              </div>
-            </div>
-          ) : (
-            <div style={{fontSize:12,color:'var(--muted)',fontWeight:700,marginBottom:12,padding:'10px 12px',background:'rgba(255,45,155,0.05)',borderRadius:8,border:'1px solid rgba(255,45,155,0.15)'}}>
-              Log your period below to get cycle-adjusted training and nutrition recommendations. Tap any day you had your period.
-            </div>
-          )}
+          <div style={{fontSize:12,color:'var(--muted)',fontWeight:700,marginBottom:14,lineHeight:1.6}}>
+            Tap any day below to mark or unmark it as a period day. Marked days show a pink border on your calendar.
+            {markedCount === 0 && (
+              <span style={{display:'block',marginTop:6,color:'var(--neon-pink)',fontSize:11}}> No days marked yet — tap any day to start.</span>
+            )}
+          </div>
 
-          {/* Period log mini-calendar */}
-          <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-pink)',fontWeight:800,marginBottom:8}}>LOG PERIOD DAYS — tap to mark/unmark</div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:12}}>
+          {/* 6-week manual log calendar */}
+          <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-pink)',fontWeight:800,marginBottom:8}}>
+            LAST 6 WEEKS — TAP TO MARK / UNMARK
+          </div>
+
+          {/* Month labels above calendar */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:10}}>
+            {/* Day-of-week headers */}
             {['S','M','T','W','T','F','S'].map((d,i)=>(
               <div key={i} style={{textAlign:'center',fontSize:9,color:'var(--muted)',fontWeight:800,paddingBottom:3}}>{d}</div>
             ))}
-            {/* Pad to first weekday of period calendar */}
-            {Array.from({length:periodCalDays[0].weekday}).map((_,i)=>(
+
+            {/* Pad to first weekday */}
+            {Array.from({length: periodCalDays[0].weekday}).map((_,i)=>(
               <div key={`pad-${i}`}/>
             ))}
-            {periodCalDays.map(d=>(
-              <div
-                key={d.dateKey}
-                onClick={()=>onMarkPeriod(d.dateKey)}
-                className={`period-log-day ${d.isPeriod?'period-log-day-period':''} ${d.isToday?'period-log-day-today':''}`}
-              >
-                <span>{d.dayNum}</span>
-                {d.isPeriod && <div className="period-log-dot"/>}
-              </div>
-            ))}
+
+            {periodCalDays.map(d => {
+              // Show month label on the 1st of each month
+              const showMonth = d.dayNum === 1;
+              return (
+                <div
+                  key={d.dateKey}
+                  onClick={()=>onMarkPeriod(d.dateKey)}
+                  style={{
+                    borderRadius: 8,
+                    padding: '5px 2px',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    border: `1px solid ${d.isPeriod ? 'rgba(255,45,155,0.6)' : d.isToday ? 'rgba(77,184,255,0.5)' : 'rgba(255,255,255,0.07)'}`,
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: d.isPeriod ? 'var(--neon-pink)' : d.isToday ? 'var(--neon-blue)' : 'var(--muted)',
+                    background: d.isPeriod ? 'rgba(255,45,155,0.15)' : d.isToday ? 'rgba(77,184,255,0.07)' : 'rgba(255,255,255,0.03)',
+                    transition: 'all 0.15s',
+                    minHeight: 38,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 2,
+                    position: 'relative',
+                  }}
+                  title={d.isPeriod ? 'Click to unmark period day' : 'Click to mark as period day'}
+                >
+                  {showMonth && (
+                    <div style={{fontSize:7,color:'var(--muted)',position:'absolute',top:2,left:0,right:0,textAlign:'center',letterSpacing:0.5,fontWeight:900}}>
+                      {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.month]}
+                    </div>
+                  )}
+                  <span style={{marginTop: showMonth ? 6 : 0}}>{d.dayNum}</span>
+                  {d.isPeriod && (
+                    <div style={{width:5,height:5,borderRadius:'50%',background:'var(--neon-pink)',boxShadow:'0 0 5px var(--neon-pink)'}}/>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
-          {/* Upcoming phases */}
-          {todayCycleDay && (
-            <div>
-              <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-purple)',fontWeight:800,marginBottom:8}}>UPCOMING PHASES</div>
-              {Object.entries(CYCLE_PHASES).map(([key, ph]) => {
-                const [start, end] = ph.days;
-                let daysUntil = start - todayCycleDay;
-                if (daysUntil < 0) daysUntil += 28;
-                const isActive = todayCycleDay >= start && todayCycleDay <= end;
-                return (
-                  <div key={key} style={{
-                    display:'flex', alignItems:'center', gap:10, padding:'7px 10px',
-                    borderRadius:8, marginBottom:4,
-                    background: isActive ? 'rgba(255,45,155,0.08)' : 'rgba(255,255,255,0.03)',
-                    border: `1px solid ${isActive ? 'rgba(255,45,155,0.3)' : 'rgba(255,255,255,0.07)'}`,
-                  }}>
-                    <div style={{width:8,height:8,borderRadius:'50%',background:ph.color,boxShadow:`0 0 6px ${ph.color}`,flexShrink:0}}/>
-                    <div style={{flex:1,fontSize:11,fontWeight:800,color:isActive?'var(--text)':'var(--muted)'}}>{ph.label}</div>
-                    <div style={{fontSize:10,fontWeight:800,color:isActive?ph.color:'var(--muted)'}}>
-                      {isActive ? 'NOW' : `in ${daysUntil}d`}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {periodLog.length > 0 && (
+          {/* Period information reference */}
+          <div style={{borderTop:'1px solid rgba(255,45,155,0.15)',paddingTop:12,marginTop:4}}>
+            <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-purple)',fontWeight:800,marginBottom:8}}>TRAINING NOTES BY PHASE</div>
+            {Object.entries(CYCLE_PHASES).map(([key, ph]) => (
+              <div key={key} style={{
+                display:'flex', alignItems:'flex-start', gap:10, padding:'7px 10px',
+                borderRadius:8, marginBottom:4,
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.07)',
+              }}>
+                <div style={{width:8,height:8,borderRadius:'50%',background:ph.color,boxShadow:`0 0 6px ${ph.color}`,flexShrink:0,marginTop:3}}/>
+                <div>
+                  <div style={{fontSize:11,fontWeight:800,color:'var(--text)',marginBottom:2}}>{ph.label}</div>
+                  <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',lineHeight:1.4}}>{ph.advice}</div>
+                </div>
+              </div>
+            ))}
             <div style={{fontSize:10,color:'var(--muted)',fontWeight:700,marginTop:8}}>
-              {periodLog.length} period start{periodLog.length>1?'s':''} logged · Calendar adjusts automatically
+              These are general guidelines. Mark your actual days and let your body guide your intensity.
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -1432,7 +1329,7 @@ export default function App() {
     catch { return DEFAULT_ATHLETE; }
   });
 
-  // Period log: array of dateKey strings (e.g. "Mon Apr 01 2024")
+  // periodLog: array of dateKey strings — each entry is one individually marked day
   const [periodLog, setPeriodLog] = useState(() => {
     try { const s = localStorage.getItem('periodLog'); return s ? JSON.parse(s) : []; }
     catch { return []; }
@@ -1446,18 +1343,16 @@ export default function App() {
   // Persist period log and rebuild schedule whenever it changes
   useEffect(() => {
     localStorage.setItem('periodLog', JSON.stringify(periodLog));
-    // Rebuild schedule with updated cycle data whenever period log changes
     setSchedule(buildSchedule(athlete, periodLog));
   }, [periodLog]);
 
+  // Toggle a single day in the period log — pure manual, no cycle inference
   const handleMarkPeriod = useCallback((dateKey) => {
-    setPeriodLog(prev => {
-      if (prev.includes(dateKey)) {
-        return prev.filter(d => d !== dateKey);
-      } else {
-        return [...prev, dateKey];
-      }
-    });
+    setPeriodLog(prev =>
+      prev.includes(dateKey)
+        ? prev.filter(d => d !== dateKey)
+        : [...prev, dateKey]
+    );
   }, []);
 
   const handleSaveProfile = useCallback((updated) => {
