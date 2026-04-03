@@ -27,6 +27,8 @@ const DEFAULT_ATHLETE = {
   daysPerWeek: 4,
   injuryNotes: '',
   caloricTarget: 3200,
+  cycleDay: null,       // female: day 1-28 of menstrual cycle
+  cycleLengthDays: 28,
 };
 
 const FAKE_SESSION = {
@@ -39,76 +41,285 @@ const FAKE_SESSION = {
 };
 
 const WORKOUT_TYPES = {
-  strength:    { label:'STRENGTH FOCUS',  color:'var(--neon-purple)', bg:'rgba(124,0,255,0.1)',  border:'rgba(124,0,255,0.4)' },
-  hypertrophy: { label:'HYPERTROPHY',     color:'var(--neon-blue)',   bg:'rgba(0,149,255,0.1)',  border:'rgba(0,149,255,0.4)' },
-  endurance:   { label:'ENDURANCE',       color:'var(--neon-teal)',   bg:'rgba(0,191,165,0.1)',  border:'rgba(0,191,165,0.4)' },
-  pr:          { label:'HIT A NEW PR 🏆', color:'var(--neon-pink)',   bg:'rgba(255,0,102,0.1)',  border:'rgba(255,0,102,0.4)' },
-  buildup:     { label:'BUILD-UP',        color:'var(--neon-green)',  bg:'rgba(0,200,83,0.1)',   border:'rgba(0,200,83,0.4)'  },
-  deload:      { label:'DELOAD',          color:'var(--neon-yellow)', bg:'rgba(255,171,0,0.1)',  border:'rgba(255,171,0,0.4)' },
+  strength:    { label:'STRENGTH FOCUS',  color:'var(--neon-purple)', bg:'rgba(185,77,255,0.1)',  border:'rgba(185,77,255,0.4)' },
+  hypertrophy: { label:'HYPERTROPHY',     color:'var(--neon-blue)',   bg:'rgba(77,184,255,0.1)',  border:'rgba(77,184,255,0.4)' },
+  endurance:   { label:'ENDURANCE',       color:'var(--neon-teal)',   bg:'rgba(0,229,255,0.1)',   border:'rgba(0,229,255,0.4)' },
+  pr:          { label:'HIT A NEW PR 🏆', color:'var(--neon-pink)',   bg:'rgba(255,45,155,0.1)',  border:'rgba(255,45,155,0.4)' },
+  buildup:     { label:'BUILD-UP',        color:'var(--neon-green)',  bg:'rgba(0,255,179,0.1)',   border:'rgba(0,255,179,0.4)'  },
+  deload:      { label:'DELOAD',          color:'var(--neon-yellow)', bg:'rgba(255,215,0,0.1)',   border:'rgba(255,215,0,0.4)' },
+  power:       { label:'POWER',           color:'var(--neon-pink)',   bg:'rgba(255,45,155,0.1)',  border:'rgba(255,45,155,0.4)' },
+  recovery:    { label:'ACTIVE RECOVERY', color:'var(--neon-teal)',   bg:'rgba(0,229,255,0.08)',  border:'rgba(0,229,255,0.3)' },
 };
 
-const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const DAY_NAMES   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+// ── CYCLE PHASE SCIENCE ──────────────────────
+// Based on evidence-based training research by Dr. Stacy Sims et al.
+const CYCLE_PHASES = {
+  menstrual:    { days:[1,5],   label:'Menstrual',    color:'var(--neon-pink)',   icon:'🌑', advice:'Lower intensity recommended. Focus on mobility and light upper body. Iron-rich nutrition priority.' },
+  follicular:   { days:[6,13],  label:'Follicular',   color:'var(--neon-green)',  icon:'🌒', advice:'Estrogen rising — strength & power training peaks here. Push PRs! High carb tolerance.' },
+  ovulatory:    { days:[14,16], label:'Ovulatory',    color:'var(--neon-yellow)', icon:'🌕', advice:'Peak strength window. Best time for 1RM attempts. High energy, high recovery capacity.' },
+  luteal_early: { days:[17,22], label:'Luteal (Early)',color:'var(--neon-orange)', icon:'🌖', advice:'Progesterone rising. Shift to hypertrophy volume. Higher protein needs. Slight fatigue normal.' },
+  luteal_late:  { days:[23,28], label:'Luteal (Late)', color:'var(--neon-purple)', icon:'🌘', advice:'PMS window. Reduce intensity. Prioritize rest days and recovery. Magnesium & B6 help symptoms.' },
+};
 
-// ─────────────────────────────────────────────
-// CALENDAR BUILDER
-// ─────────────────────────────────────────────
+function getCyclePhase(cycleDay) {
+  if (!cycleDay) return null;
+  const d = ((cycleDay - 1) % 28) + 1;
+  if (d >= 1  && d <= 5)  return 'menstrual';
+  if (d >= 6  && d <= 13) return 'follicular';
+  if (d >= 14 && d <= 16) return 'ovulatory';
+  if (d >= 17 && d <= 22) return 'luteal_early';
+  return 'luteal_late';
+}
+
+// ── ACCESSORY EXERCISES BY EQUIPMENT ─────────
+const ACCESSORIES = {
+  full: {
+    squat:    [{ name:'Leg Press 3x12', muscle:'Quads' }, { name:'Bulgarian Split Squat 3x10', muscle:'Glutes' }, { name:'Leg Curl 3x12', muscle:'Hamstrings' }, { name:'Calf Raise 4x15', muscle:'Calves' }],
+    bench:    [{ name:'Cable Fly 3x15', muscle:'Chest' }, { name:'Tricep Pushdown 4x12', muscle:'Triceps' }, { name:'Face Pull 3x20', muscle:'Rear Delts' }, { name:'Incline DB Press 3x12', muscle:'Upper Chest' }],
+    deadlift: [{ name:'Romanian DL 3x10', muscle:'Hamstrings' }, { name:'Lat Pulldown 3x12', muscle:'Lats' }, { name:'Seated Row 3x12', muscle:'Mid Back' }, { name:'Hyperextension 3x15', muscle:'Erectors' }],
+    ohp:      [{ name:'Lateral Raise 4x15', muscle:'Side Delts' }, { name:'Arnold Press 3x12', muscle:'Shoulders' }, { name:'Skull Crusher 3x12', muscle:'Triceps' }, { name:'Band Pull-Apart 3x25', muscle:'Rear Delts' }],
+    upper:    [{ name:'Pull-Up 3x8', muscle:'Lats' }, { name:'DB Row 3x12', muscle:'Back' }, { name:'Chest Fly 3x15', muscle:'Chest' }, { name:'Bicep Curl 3x15', muscle:'Biceps' }],
+    lower:    [{ name:'Leg Press 4x12', muscle:'Quads' }, { name:'Hip Thrust 3x15', muscle:'Glutes' }, { name:'Leg Extension 3x15', muscle:'Quads' }, { name:'Seated Leg Curl 3x12', muscle:'Hamstrings' }],
+  },
+  barbell: {
+    squat:    [{ name:'Good Morning 3x10', muscle:'Hamstrings' }, { name:'Barbell Lunge 3x10/leg', muscle:'Quads' }, { name:'Back Extension 3x15', muscle:'Erectors' }],
+    bench:    [{ name:'Close-Grip Bench 3x10', muscle:'Triceps' }, { name:'Barbell Row 3x10', muscle:'Back' }, { name:'Floor Press 3x12', muscle:'Chest' }],
+    deadlift: [{ name:'Romanian DL 3x10', muscle:'Hamstrings' }, { name:'Pendlay Row 3x8', muscle:'Back' }, { name:'Good Morning 3x12', muscle:'Lower Back' }],
+    ohp:      [{ name:'Push Press 3x5', muscle:'Shoulders' }, { name:'Barbell Shrug 4x15', muscle:'Traps' }, { name:'Close-Grip OHP 3x10', muscle:'Triceps' }],
+    upper:    [{ name:'Barbell Row 4x8', muscle:'Back' }, { name:'Close-Grip Bench 3x10', muscle:'Triceps' }, { name:'Barbell Curl 3x12', muscle:'Biceps' }],
+    lower:    [{ name:'Barbell Lunge 3x10', muscle:'Quads' }, { name:'Romanian DL 3x10', muscle:'Hamstrings' }, { name:'Good Morning 3x12', muscle:'Lower Back' }],
+  },
+  dumbbell: {
+    squat:    [{ name:'DB Goblet Squat 4x12', muscle:'Quads' }, { name:'DB Reverse Lunge 3x12/leg', muscle:'Glutes' }, { name:'DB Step-Up 3x12/leg', muscle:'Quads' }],
+    bench:    [{ name:'DB Press 4x12', muscle:'Chest' }, { name:'DB Fly 3x15', muscle:'Chest' }, { name:'DB Tricep Extension 3x15', muscle:'Triceps' }],
+    deadlift: [{ name:'DB Romanian DL 3x12', muscle:'Hamstrings' }, { name:'DB Row 4x12', muscle:'Back' }, { name:'DB Shrug 3x20', muscle:'Traps' }],
+    ohp:      [{ name:'DB Shoulder Press 4x12', muscle:'Shoulders' }, { name:'DB Lateral Raise 4x15', muscle:'Side Delts' }, { name:'DB Front Raise 3x15', muscle:'Front Delts' }],
+    upper:    [{ name:'DB Row 4x12', muscle:'Back' }, { name:'DB Curl 3x15', muscle:'Biceps' }, { name:'DB Lateral Raise 3x15', muscle:'Delts' }],
+    lower:    [{ name:'DB Goblet Squat 4x15', muscle:'Quads' }, { name:'DB RDL 4x12', muscle:'Hamstrings' }, { name:'DB Hip Thrust 3x15', muscle:'Glutes' }],
+  },
+  home: {
+    squat:    [{ name:'Bodyweight Squat 4x20', muscle:'Quads' }, { name:'Jump Squat 3x10', muscle:'Power' }, { name:'Wall Sit 3x45s', muscle:'Quads' }],
+    bench:    [{ name:'Push-Up 4x20', muscle:'Chest' }, { name:'Diamond Push-Up 3x15', muscle:'Triceps' }, { name:'Pike Push-Up 3x12', muscle:'Shoulders' }],
+    deadlift: [{ name:'Single-Leg RDL 3x12', muscle:'Hamstrings' }, { name:'Superman Hold 3x30s', muscle:'Back' }, { name:'Glute Bridge 4x20', muscle:'Glutes' }],
+    ohp:      [{ name:'Pike Push-Up 4x12', muscle:'Shoulders' }, { name:'Handstand Hold 3x30s', muscle:'Shoulders' }, { name:'Tricep Dip 3x15', muscle:'Triceps' }],
+    upper:    [{ name:'Push-Up Variations 4x15', muscle:'Chest' }, { name:'Inverted Row 3x12', muscle:'Back' }, { name:'Tricep Dip 3x15', muscle:'Triceps' }],
+    lower:    [{ name:'Bulgarian Split Squat 3x15', muscle:'Quads' }, { name:'Hip Thrust 4x20', muscle:'Glutes' }, { name:'Single-Leg Glute Bridge 3x15', muscle:'Glutes' }],
+  },
+};
+
+function getAccessoriesForLift(liftName, equipment) {
+  const eq = ACCESSORIES[equipment] || ACCESSORIES.full;
+  const l = (liftName || '').toLowerCase();
+  if (l.includes('squat')) return eq.squat || [];
+  if (l.includes('bench')) return eq.bench || [];
+  if (l.includes('deadlift')) return eq.deadlift || [];
+  if (l.includes('ohp') || l.includes('overhead') || l.includes('press')) return eq.ohp || [];
+  if (l.includes('upper')) return eq.upper || [];
+  if (l.includes('lower') || l.includes('leg')) return eq.lower || [];
+  return eq.upper || [];
+}
+
+// ── GOAL-BASED SCHEDULE LOGIC ─────────────────
+function getGoalConfig(goal) {
+  switch (goal) {
+    case 'strength':      return { mainSets:'5x5', mainPct:0.80, accSets:'3x8',  restDays:3, note:'Neural adaptation focus — heavy, low rep' };
+    case 'hypertrophy':   return { mainSets:'4x10',mainPct:0.70, accSets:'4x12', restDays:2, note:'Volume focus — moderate weight, high reps' };
+    case 'powerlifting':  return { mainSets:'5x3', mainPct:0.87, accSets:'3x5',  restDays:3, note:'Competition prep — max effort, specificity' };
+    case 'athletic':      return { mainSets:'4x6', mainPct:0.75, accSets:'3x10', restDays:2, note:'Power + conditioning balance' };
+    case 'recomp':        return { mainSets:'3x12',mainPct:0.65, accSets:'3x15', restDays:2, note:'Muscle retention + fat loss focus' };
+    case 'endurance':     return { mainSets:'3x15',mainPct:0.55, accSets:'3x20', restDays:2, note:'High rep, metabolic conditioning' };
+    default:              return { mainSets:'4x8', mainPct:0.72, accSets:'3x12', restDays:3, note:'General fitness' };
+  }
+}
+
+// ── BUILD SCHEDULE ────────────────────────────
 function buildSchedule(athlete) {
   const today = new Date();
   today.setHours(0,0,0,0);
+  const goal = getGoalConfig(athlete.goal);
+  const isFemale = athlete.gender === 'female';
+  const cycleDay = athlete.cycleDay;
 
-  const liftPattern = [
-    { lift:'Squat 5x5',      type:'strength',    cal:'+350', rest:false,
-      reason:'Week 6 bulk — 5x5 at 79% 1RM drives neural adaptation. Squat is the foundation of your program.',
-      nutr:'Bulk surplus +350 kcal. Target 420g carbs today. Pre-workout: rice + banana 90 min before.' },
-    { lift:null,             type:null,          cal:'+200', rest:true,
-      reason:'CNS recovery after heavy squat. Posterior chain needs 48h minimum.',
-      nutr:'Lower calorie day +200 kcal. Protein stays high — MPS peaks 24-48h post session.' },
-    { lift:'Bench 4x8',      type:'hypertrophy', cal:'+350', rest:false,
-      reason:'Hypertrophy block: 4x8 at 72% 1RM. Controlled eccentric tempo today.',
-      nutr:'60g carbs 90 min pre-workout. 50g protein within 30 min post-session.' },
-    { lift:'Squat 4x6',      type:'hypertrophy', cal:'+350', rest:false,
-      reason:'Second squat day — hypertrophy focus at 74% 1RM. More volume = more adaptation.',
-      nutr:'Same carb timing as heavy squat day. Hypertrophy sessions are calorically expensive.' },
-    { lift:null,             type:null,          cal:'+200', rest:true,
-      reason:'Rest after back-to-back squat and bench. CNS fatigue accumulates.',
-      nutr:'Recovery day. Keep protein high. Extra hydration.' },
-    { lift:'Deadlift 3x5',   type:'strength',    cal:'+400', rest:false,
-      reason:'CNS readiness high — 3x5 at 86% 1RM. This is a strength day, not volume.',
-      nutr:'Highest calorie day: +400 kcal. Complex carbs only. 50g protein post.' },
-    { lift:null,             type:null,          cal:'+150', rest:true,
-      reason:'Active rest. Mobility or light cardio only.',
-      nutr:'Lowest calorie day +150 kcal. Focus on sleep — GH peaks during deep sleep.' },
-    { lift:'Squat 5x5+',     type:'pr',          cal:'+350', rest:false,
-      reason:'PR ATTEMPT: add 5 lbs to last squat. 6 weeks of velocity data show consistent adaptation.',
-      nutr:'Largest carb day. Load 500g carbs split between night before and pre-workout.' },
-    { lift:null,             type:null,          cal:'+200', rest:true,
-      reason:'Rest after PR attempt. Max effort causes more CNS fatigue than volume sessions.',
-      nutr:'Recovery nutrition. High protein + antioxidants to reduce post-max inflammation.' },
-    { lift:'Bench 4x8+',     type:'buildup',     cal:'+350', rest:false,
-      reason:'Progressive bench: +2.5 lbs. Pressing velocity held at 0.68 m/s last session.',
-      nutr:'Same as last bench day. Nutrition unchanged for progressive overload.' },
-    { lift:'Squat 3x8',      type:'hypertrophy', cal:'+350', rest:false,
-      reason:'Volume squat day — 3x8 at 68% 1RM. Higher reps build the muscular base.',
-      nutr:'Higher carb timing around this session — 8-rep sets burn more glycogen.' },
-    { lift:null,             type:null,          cal:'+200', rest:true,
-      reason:'Rest after squat volume day.',
-      nutr:'Standard recovery nutrition. Hydration priority today.' },
-    { lift:'OHP 4x8',        type:'hypertrophy', cal:'+350', rest:false,
-      reason:'OHP hypertrophy: 4x8 at 69% 1RM. IMU tilt shows right shoulder weakness — pause at top.',
-      nutr:'Standard bulk day. Treat pre-workout nutrition same as squat day.' },
-    { lift:'Deload Squat',   type:'deload',      cal:'+150', rest:false,
-      reason:'Planned deload: 50% load, focus on bar path. Tendons need to catch up.',
-      nutr:'Lower calorie day. Mild deficit on deload days accelerates recomposition.' },
-  ];
+  // Base lift patterns keyed by goal
+  const getLiftName = (base, sets, pct, rm) => {
+    const weight = Math.round(rm * pct / 5) * 5;
+    return `${base} ${sets} @ ${weight}lbs`;
+  };
+
+  const sqW  = Math.round(athlete.squat1RM    * goal.mainPct / 5) * 5;
+  const bnW  = Math.round(athlete.bench1RM    * goal.mainPct / 5) * 5;
+  const dlW  = Math.round(athlete.deadlift1RM * (goal.mainPct + 0.05) / 5) * 5;
+  const ohpW = Math.round(athlete.ohp1RM      * (goal.mainPct - 0.05) / 5) * 5;
+
+  // Pattern: 14 days, varies by goal
+  let liftPattern;
+  if (athlete.goal === 'strength' || athlete.goal === 'powerlifting') {
+    liftPattern = [
+      { lift:`Squat ${goal.mainSets}`,    type:'strength',    cal:'+350', rest:false, baseKey:'squat'    },
+      { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
+      { lift:`Bench ${goal.mainSets}`,    type:'strength',    cal:'+350', rest:false, baseKey:'bench'    },
+      { lift:`Squat ${goal.mainSets}+`,   type:'pr',          cal:'+350', rest:false, baseKey:'squat'    },
+      { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
+      { lift:`Deadlift ${goal.mainSets}`, type:'strength',    cal:'+400', rest:false, baseKey:'deadlift' },
+      { lift:null,                         type:null,          cal:'+150', rest:true,  baseKey:null       },
+      { lift:`OHP ${goal.mainSets}`,      type:'strength',    cal:'+350', rest:false, baseKey:'ohp'      },
+      { lift:`Bench ${goal.mainSets}+`,   type:'buildup',     cal:'+350', rest:false, baseKey:'bench'    },
+      { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
+      { lift:`Squat ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'squat'    },
+      { lift:`Deadlift ${goal.mainSets}`, type:'strength',    cal:'+400', rest:false, baseKey:'deadlift' },
+      { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
+      { lift:`Deload Squat`,              type:'deload',      cal:'+150', rest:false, baseKey:'squat'    },
+    ];
+  } else if (athlete.goal === 'hypertrophy' || athlete.goal === 'recomp') {
+    liftPattern = [
+      { lift:`Squat ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'squat'    },
+      { lift:`Bench ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'bench'    },
+      { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
+      { lift:`Deadlift ${goal.mainSets}`, type:'hypertrophy', cal:'+350', rest:false, baseKey:'deadlift' },
+      { lift:`OHP ${goal.mainSets}`,      type:'hypertrophy', cal:'+350', rest:false, baseKey:'ohp'      },
+      { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
+      { lift:`Squat ${goal.mainSets}+`,   type:'pr',          cal:'+350', rest:false, baseKey:'squat'    },
+      { lift:null,                         type:null,          cal:'+150', rest:true,  baseKey:null       },
+      { lift:`Bench ${goal.mainSets}+`,   type:'buildup',     cal:'+350', rest:false, baseKey:'bench'    },
+      { lift:`Deadlift ${goal.mainSets}`, type:'hypertrophy', cal:'+350', rest:false, baseKey:'deadlift' },
+      { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
+      { lift:`OHP ${goal.mainSets}`,      type:'hypertrophy', cal:'+350', rest:false, baseKey:'ohp'      },
+      { lift:`Squat ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'squat'    },
+      { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
+    ];
+  } else if (athlete.goal === 'endurance') {
+    liftPattern = [
+      { lift:`Squat ${goal.mainSets}`,    type:'endurance',   cal:'+250', rest:false, baseKey:'squat'    },
+      { lift:`Bench ${goal.mainSets}`,    type:'endurance',   cal:'+250', rest:false, baseKey:'bench'    },
+      { lift:null,                         type:null,          cal:'+150', rest:true,  baseKey:null       },
+      { lift:`Deadlift ${goal.mainSets}`, type:'endurance',   cal:'+250', rest:false, baseKey:'deadlift' },
+      { lift:`OHP ${goal.mainSets}`,      type:'endurance',   cal:'+250', rest:false, baseKey:'ohp'      },
+      { lift:null,                         type:null,          cal:'+150', rest:true,  baseKey:null       },
+      { lift:`Full Body Circuit`,         type:'endurance',   cal:'+250', rest:false, baseKey:'upper'    },
+      { lift:null,                         type:null,          cal:'+100', rest:true,  baseKey:null       },
+      { lift:`Squat ${goal.mainSets}`,    type:'endurance',   cal:'+250', rest:false, baseKey:'squat'    },
+      { lift:`Bench ${goal.mainSets}`,    type:'endurance',   cal:'+250', rest:false, baseKey:'bench'    },
+      { lift:null,                         type:null,          cal:'+150', rest:true,  baseKey:null       },
+      { lift:`Deadlift ${goal.mainSets}`, type:'endurance',   cal:'+250', rest:false, baseKey:'deadlift' },
+      { lift:null,                         type:null,          cal:'+150', rest:true,  baseKey:null       },
+      { lift:`Active Recovery`,           type:'recovery',    cal:'+100', rest:false, baseKey:'upper'    },
+    ];
+  } else {
+    // athletic / default
+    liftPattern = [
+      { lift:`Squat ${goal.mainSets}`,    type:'strength',    cal:'+350', rest:false, baseKey:'squat'    },
+      { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
+      { lift:`Bench ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'bench'    },
+      { lift:`Squat ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'squat'    },
+      { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
+      { lift:`Deadlift ${goal.mainSets}`, type:'strength',    cal:'+400', rest:false, baseKey:'deadlift' },
+      { lift:null,                         type:null,          cal:'+150', rest:true,  baseKey:null       },
+      { lift:`Squat ${goal.mainSets}+`,   type:'pr',          cal:'+350', rest:false, baseKey:'squat'    },
+      { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
+      { lift:`Bench ${goal.mainSets}+`,   type:'buildup',     cal:'+350', rest:false, baseKey:'bench'    },
+      { lift:`Squat ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'squat'    },
+      { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
+      { lift:`OHP ${goal.mainSets}`,      type:'hypertrophy', cal:'+350', rest:false, baseKey:'ohp'      },
+      { lift:`Deload Squat`,              type:'deload',      cal:'+150', rest:false, baseKey:'squat'    },
+    ];
+  }
+
+  const MONTH_NAMES_LOCAL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
   const days = [];
   for (let i = 0; i < 14; i++) {
     const date = new Date(today);
     date.setDate(today.getDate() + i);
     const pattern = liftPattern[i % liftPattern.length];
+
+    // Compute cycle data for this day
+    let thisCycleDay = null;
+    let cyclePhaseKey = null;
+    let cyclePhaseInfo = null;
+    if (isFemale && cycleDay) {
+      thisCycleDay = ((cycleDay - 1 + i) % athlete.cycleLengthDays) + 1;
+      cyclePhaseKey = getCyclePhase(thisCycleDay);
+      cyclePhaseInfo = CYCLE_PHASES[cyclePhaseKey];
+    }
+
+    // Cycle-based lift overrides for females
+    let lift = pattern.lift;
+    let type = pattern.type;
+    let cal  = pattern.cal;
+    let rest = pattern.rest;
+    let cycleNote = null;
+
+    if (isFemale && cyclePhaseKey && !rest) {
+      if (cyclePhaseKey === 'menstrual') {
+        // Day 1-5: no heavy leg work, prefer upper or mobility
+        if (lift && /squat|deadlift/i.test(lift)) {
+          lift = 'Upper Body (light)';
+          type = 'recovery';
+          cal  = '+150';
+          cycleNote = 'Swapped to light upper — menstrual phase. Low intensity recommended.';
+        }
+      } else if (cyclePhaseKey === 'follicular' || cyclePhaseKey === 'ovulatory') {
+        // Peak window — push PRs, add power type
+        if (type === 'hypertrophy') type = 'strength';
+        if (cyclePhaseKey === 'ovulatory' && lift && !lift.includes('+')) lift = lift + ' (PR window 🏆)';
+        cycleNote = cyclePhaseKey === 'ovulatory'
+          ? 'Ovulatory peak — best time for 1RM attempts. Estrogen + LH surge = max power.'
+          : 'Follicular phase — high estrogen = great strength gains. Push intensity.';
+      } else if (cyclePhaseKey === 'luteal_late') {
+        // PMS window — reduce intensity, more rest
+        if (!rest) {
+          type = 'recovery';
+          cycleNote = 'Late luteal phase — reduce load by 10-15%. Higher fatigue is normal, not weakness.';
+        }
+      }
+    }
+
+    // Accessories
+    const accessories = (!rest && pattern.baseKey)
+      ? getAccessoriesForLift(pattern.baseKey, athlete.equipment).map(a => ({ ...a, done: false }))
+      : [];
+
+    // Reason text
+    let reason = '';
+    if (rest) {
+      reason = 'CNS recovery day. Protein stays high, light movement only.';
+    } else if (cycleNote) {
+      reason = cycleNote;
+    } else {
+      const gc = getGoalConfig(athlete.goal);
+      reason = `${athlete.goal.charAt(0).toUpperCase() + athlete.goal.slice(1)} goal — ${gc.note}. Phase week ${athlete.phaseWeek}/${athlete.phaseTotalWeeks}.`;
+    }
+
+    // Nutrition note
+    let nutr = '';
+    if (rest) {
+      nutr = 'Recovery day. Keep protein at 1g/lb bodyweight. Hydration priority.';
+    } else if (cyclePhaseKey === 'menstrual') {
+      nutr = 'Iron-rich foods today (spinach, red meat, lentils). Anti-inflammatory diet reduces cramping.';
+    } else if (cyclePhaseKey === 'follicular' || cyclePhaseKey === 'ovulatory') {
+      nutr = 'High carb tolerance — load 400g+ carbs. Estrogen improves insulin sensitivity.';
+    } else if (cyclePhaseKey === 'luteal_early' || cyclePhaseKey === 'luteal_late') {
+      nutr = 'Higher protein need in luteal phase (+20g). Magnesium helps with symptoms. Reduce refined carbs.';
+    } else {
+      nutr = athlete.phase === 'bulk'
+        ? `Bulk surplus ${cal} kcal. Pre-workout: complex carbs 90 min before.`
+        : athlete.phase === 'cut'
+        ? `Deficit day. Keep protein high (${athlete.bodyweight}g). Time carbs around session.`
+        : 'Maintenance calories. Balanced macros around training window.';
+    }
+
     days.push({
-      ...pattern,
+      lift,
+      type,
+      cal,
+      rest,
+      reason,
+      nutr,
+      baseKey: pattern.baseKey,
+      accessories,
+      cycleDay: thisCycleDay,
+      cyclePhaseKey,
+      cyclePhaseInfo,
       date,
       dayNum: date.getDate(),
       month: date.getMonth(),
@@ -116,11 +327,14 @@ function buildSchedule(athlete) {
       weekday: date.getDay(),
       today: i === 0,
       dateKey: date.toDateString(),
-      dateLabel: `${MONTH_NAMES[date.getMonth()]} ${date.getDate()}`,
+      dateLabel: `${MONTH_NAMES_LOCAL[date.getMonth()]} ${date.getDate()}`,
     });
   }
   return days;
 }
+
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAY_NAMES   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 // ─────────────────────────────────────────────
 // SHARED UI
@@ -140,9 +354,6 @@ function AICard({ dot, text, meta, loading }) {
   );
 }
 
-// ─────────────────────────────────────────────
-// INPUT ROW (must be outside ProfileScreen to avoid focus loss)
-// ─────────────────────────────────────────────
 function InputRow({ label, children }) {
   return (
     <div style={{display:'flex',flexDirection:'column',gap:4,marginBottom:14}}>
@@ -158,7 +369,6 @@ function InputRow({ label, children }) {
 function ProfileScreen({ athlete, onSave }) {
   const [form, setForm] = useState({ ...athlete });
   const [saved, setSaved] = useState(false);
-
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
   const handleSave = () => {
@@ -172,6 +382,7 @@ function ProfileScreen({ athlete, onSave }) {
         : Math.round(form.bodyweight * 15),
     };
     onSave(updated);
+    localStorage.setItem('athleteProfile', JSON.stringify(updated));
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
@@ -182,62 +393,35 @@ function ProfileScreen({ athlete, onSave }) {
   const initials = `${form.firstName?.[0] ?? '?'}${form.lastName?.[0] ?? '?'}`.toUpperCase();
 
   const inputStyle = {
-    background:'rgba(255,255,255,0.04)',
-    border:'1px solid rgba(255,255,255,0.1)',
-    borderRadius:8,
-    color:'var(--text)',
-    fontSize:13,
-    fontWeight:700,
-    padding:'9px 12px',
-    outline:'none',
-    width:'100%',
-    boxSizing:'border-box',
+    background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)',
+    borderRadius:8, color:'var(--text)', fontSize:13, fontWeight:700,
+    padding:'9px 12px', outline:'none', width:'100%', boxSizing:'border-box',
   };
   const selectStyle = { ...inputStyle, cursor:'pointer' };
 
   return (
     <div className="screen">
       <div className="page-title gradient-blue">ATHLETE PROFILE</div>
-      <div className="page-sub">Your data powers every AI recommendation in the app</div>
-
-      {/* Summary card */}
+      <div className="page-sub">Your data powers every AI recommendation — calendar auto-rebuilds on save</div>
       <div className="gcard gc-blue" style={{marginBottom:14}}>
         <div style={{display:'flex',gap:16,alignItems:'center'}}>
-          <div style={{
-            width:64,height:64,borderRadius:'50%',flexShrink:0,
-            background:'linear-gradient(135deg,var(--neon-blue),var(--neon-purple))',
-            display:'flex',alignItems:'center',justifyContent:'center',
-            fontFamily:'Bebas Neue',fontSize:24,color:'#fff',letterSpacing:2,
-          }}>{initials}</div>
+          <div style={{width:64,height:64,borderRadius:'50%',flexShrink:0,background:'linear-gradient(135deg,var(--neon-blue),var(--neon-purple))',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Bebas Neue',fontSize:24,color:'#fff',letterSpacing:2,boxShadow:'0 0 24px rgba(77,184,255,0.4)'}}>{initials}</div>
           <div>
             <div style={{fontFamily:'Bebas Neue',fontSize:22,letterSpacing:2,color:'var(--text)'}}>{form.firstName} {form.lastName}</div>
-            <div style={{fontSize:11,color:'var(--muted)',fontWeight:700,marginTop:2}}>
-              {form.age} yrs · {form.heightFt}'{form.heightIn}" ({heightCm}cm) · {form.bodyweight} lbs ({weightKg}kg) · BMI {bmi}
-            </div>
-            <div style={{fontSize:11,color:'var(--muted)',fontWeight:700}}>
-              {form.goal} goal · {form.equipment} equipment
-            </div>
+            <div style={{fontSize:11,color:'var(--muted)',fontWeight:700,marginTop:2}}>{form.age} yrs · {form.heightFt}'{form.heightIn}" ({heightCm}cm) · {form.bodyweight} lbs ({weightKg}kg) · BMI {bmi}</div>
+            <div style={{fontSize:11,color:'var(--muted)',fontWeight:700}}>{form.goal} goal · {form.equipment} equipment · {form.gender}</div>
           </div>
         </div>
       </div>
-
       <div className="panel-grid">
-
-        {/* Personal Info */}
         <div className="gcard gc-blue">
           <div className="panel-header"><span className="panel-title">PERSONAL INFO</span></div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 12px'}}>
-            <InputRow label="FIRST NAME">
-              <input style={inputStyle} value={form.firstName} onChange={e=>set('firstName',e.target.value)}/>
-            </InputRow>
-            <InputRow label="LAST NAME">
-              <input style={inputStyle} value={form.lastName} onChange={e=>set('lastName',e.target.value)}/>
-            </InputRow>
+            <InputRow label="FIRST NAME"><input style={inputStyle} value={form.firstName} onChange={e=>set('firstName',e.target.value)}/></InputRow>
+            <InputRow label="LAST NAME"><input style={inputStyle} value={form.lastName} onChange={e=>set('lastName',e.target.value)}/></InputRow>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 12px'}}>
-            <InputRow label="AGE">
-              <input style={inputStyle} type="number" min="13" max="80" value={form.age} onChange={e=>set('age',parseInt(e.target.value)||0)}/>
-            </InputRow>
+            <InputRow label="AGE"><input style={inputStyle} type="number" min="13" max="80" value={form.age} onChange={e=>set('age',parseInt(e.target.value)||0)}/></InputRow>
             <InputRow label="GENDER">
               <select style={selectStyle} value={form.gender} onChange={e=>set('gender',e.target.value)}>
                 <option value="male">Male</option>
@@ -247,56 +431,72 @@ function ProfileScreen({ athlete, onSave }) {
             </InputRow>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0 12px'}}>
-            <InputRow label="HEIGHT (FT)">
-              <input style={inputStyle} type="number" min="4" max="7" value={form.heightFt} onChange={e=>set('heightFt',parseInt(e.target.value)||0)}/>
-            </InputRow>
-            <InputRow label="HEIGHT (IN)">
-              <input style={inputStyle} type="number" min="0" max="11" value={form.heightIn} onChange={e=>set('heightIn',parseInt(e.target.value)||0)}/>
-            </InputRow>
-            <InputRow label="WEIGHT (LBS)">
-              <input style={inputStyle} type="number" min="80" max="500" value={form.bodyweight} onChange={e=>set('bodyweight',parseInt(e.target.value)||0)}/>
-            </InputRow>
+            <InputRow label="HEIGHT (FT)"><input style={inputStyle} type="number" min="4" max="7" value={form.heightFt} onChange={e=>set('heightFt',parseInt(e.target.value)||0)}/></InputRow>
+            <InputRow label="HEIGHT (IN)"><input style={inputStyle} type="number" min="0" max="11" value={form.heightIn} onChange={e=>set('heightIn',parseInt(e.target.value)||0)}/></InputRow>
+            <InputRow label="WEIGHT (LBS)"><input style={inputStyle} type="number" min="80" max="500" value={form.bodyweight} onChange={e=>set('bodyweight',parseInt(e.target.value)||0)}/></InputRow>
           </div>
+          {/* Cycle tracking for females */}
+          {form.gender === 'female' && (
+            <div style={{marginTop:8,padding:'12px',background:'rgba(255,45,155,0.06)',borderRadius:10,border:'1px solid rgba(255,45,155,0.2)'}}>
+              <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-pink)',fontWeight:800,marginBottom:8}}>🩸 CYCLE TRACKING</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 12px'}}>
+                <InputRow label="CURRENT CYCLE DAY (1-28)">
+                  <input style={inputStyle} type="number" min="1" max="35" placeholder="e.g. 1 = period start"
+                    value={form.cycleDay||''} onChange={e=>set('cycleDay',parseInt(e.target.value)||null)}/>
+                </InputRow>
+                <InputRow label="CYCLE LENGTH (DAYS)">
+                  <input style={inputStyle} type="number" min="21" max="35" value={form.cycleLengthDays||28}
+                    onChange={e=>set('cycleLengthDays',parseInt(e.target.value)||28)}/>
+                </InputRow>
+              </div>
+              {form.cycleDay && (
+                <div style={{fontSize:11,fontWeight:700,color:'var(--neon-pink)',marginTop:4}}>
+                  {CYCLE_PHASES[getCyclePhase(form.cycleDay)]?.icon} Currently in {CYCLE_PHASES[getCyclePhase(form.cycleDay)]?.label} phase
+                  · {CYCLE_PHASES[getCyclePhase(form.cycleDay)]?.advice}
+                </div>
+              )}
+            </div>
+          )}
         </div>
-
-        {/* Training Info */}
         <div className="gcard gc-purple">
           <div className="panel-header"><span className="panel-title">TRAINING INFO</span></div>
-          <InputRow label="PRIMARY GOAL">
+          <InputRow label="PRIMARY GOAL — changes your entire program">
             <select style={selectStyle} value={form.goal} onChange={e=>set('goal',e.target.value)}>
-              <option value="strength">Strength (1RM focus)</option>
-              <option value="hypertrophy">Hypertrophy (muscle size)</option>
-              <option value="powerlifting">Powerlifting (compete)</option>
-              <option value="athletic">Athletic performance</option>
-              <option value="recomp">Body recomposition</option>
-              <option value="endurance">Strength endurance</option>
+              <option value="strength">Strength (1RM focus — 5x5, 80%+)</option>
+              <option value="hypertrophy">Hypertrophy (muscle size — 4x10, 70%)</option>
+              <option value="powerlifting">Powerlifting (compete — 5x3, 87%)</option>
+              <option value="athletic">Athletic performance (power + conditioning)</option>
+              <option value="recomp">Body recomposition (3x12, 65%)</option>
+              <option value="endurance">Strength endurance (3x15, 55%)</option>
             </select>
           </InputRow>
-          <InputRow label="AVAILABLE EQUIPMENT">
+          <InputRow label="AVAILABLE EQUIPMENT — changes your accessories">
             <select style={selectStyle} value={form.equipment} onChange={e=>set('equipment',e.target.value)}>
-              <option value="full">Full gym (rack, platform, cables)</option>
+              <option value="full">Full gym (rack, cables, machines)</option>
               <option value="barbell">Barbell + plates only</option>
               <option value="dumbbell">Dumbbells only</option>
-              <option value="home">Home gym (limited)</option>
+              <option value="home">Home gym (bodyweight/minimal)</option>
+            </select>
+          </InputRow>
+          <InputRow label="TRAINING PHASE">
+            <select style={selectStyle} value={form.phase} onChange={e=>set('phase',e.target.value)}>
+              <option value="bulk">Bulking (+350 kcal surplus)</option>
+              <option value="cut">Cutting (-300 kcal deficit)</option>
+              <option value="maintain">Maintenance</option>
             </select>
           </InputRow>
           <InputRow label="INJURY NOTES (optional)">
-            <input style={inputStyle} placeholder="e.g. left knee tendinitis, avoid deep squats" value={form.injuryNotes} onChange={e=>set('injuryNotes',e.target.value)}/>
+            <input style={inputStyle} placeholder="e.g. left knee tendinitis" value={form.injuryNotes} onChange={e=>set('injuryNotes',e.target.value)}/>
           </InputRow>
+          <div style={{background:'rgba(185,77,255,0.06)',borderRadius:10,padding:10,border:'1px solid rgba(185,77,255,0.15)',marginTop:4}}>
+            <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-purple)',fontWeight:800,marginBottom:4}}>GOAL PREVIEW</div>
+            <div style={{fontSize:11,color:'var(--text)',fontWeight:700}}>{getGoalConfig(form.goal).note}</div>
+            <div style={{fontSize:10,color:'var(--muted)',marginTop:2,fontWeight:700}}>Main lifts: {getGoalConfig(form.goal).mainSets} · Accessories: {getGoalConfig(form.goal).accSets} · Rest days/week: {getGoalConfig(form.goal).restDays}</div>
+          </div>
         </div>
-
       </div>
-
-      <button onClick={handleSave} style={{
-        width:'100%',padding:'16px 0',marginTop:8,marginBottom:24,
-        background: saved ? 'rgba(0,200,83,0.15)' : 'linear-gradient(135deg,var(--neon-blue),var(--neon-purple))',
-        border: saved ? '1px solid var(--neon-green)' : 'none',
-        borderRadius:12,cursor:'pointer',
-        fontFamily:'Bebas Neue',fontSize:18,letterSpacing:3,
-        color: saved ? 'var(--neon-green)' : '#fff',
-        transition:'all 0.3s',
-      }}>
-        {saved ? '✓ PROFILE SAVED — AI UPDATED' : 'SAVE PROFILE'}
+      <button onClick={handleSave} style={{width:'100%',padding:'16px 0',marginTop:8,marginBottom:24,background:saved?'rgba(0,255,179,0.1)':'linear-gradient(135deg,var(--neon-blue),var(--neon-purple))',border:saved?'1px solid var(--neon-green)':'none',borderRadius:12,cursor:'pointer',fontFamily:'Bebas Neue',fontSize:18,letterSpacing:3,color:saved?'var(--neon-green)':'#fff',transition:'all 0.3s',boxShadow:saved?'none':'0 4px 24px rgba(185,77,255,0.4)'}}>
+        {saved ? '✓ PROFILE SAVED — CALENDAR REBUILT' : 'SAVE PROFILE & REBUILD CALENDAR'}
       </button>
     </div>
   );
@@ -306,16 +506,14 @@ function ProfileScreen({ athlete, onSave }) {
 // START LIFT
 // ─────────────────────────────────────────────
 function StartLift({ onStart, presetLift, athlete }) {
-
   const lifts = [
-  { name:'BACK SQUAT',  icon:'/backsquat.png',   pct:0.79, color:'blue',   rm:athlete.squat1RM },
-  { name:'BENCH PRESS', icon:'/bench.png',        pct:0.72, color:'purple', rm:athlete.bench1RM },
-  { name:'DEADLIFT',    icon:'/deadlift.png',     pct:0.86, color:'green',  rm:athlete.deadlift1RM },
-  { name:'OHP',         icon:'/overhead.png',     pct:0.69, color:'orange', rm:athlete.ohp1RM },
-  { name:'ROMANIAN DL', icon:'/deadlift.png',     pct:0.70, color:'yellow', rm:Math.round(athlete.deadlift1RM * 0.56) },
-  { name:'FRONT SQUAT', icon:'/frontsquat.png',   pct:0.75, color:'teal',   rm:Math.round(athlete.squat1RM * 0.79) },
+    { name:'BACK SQUAT',  icon:'/backsquat.png',   pct:0.79, color:'blue',   rm:athlete.squat1RM },
+    { name:'BENCH PRESS', icon:'/bench.png',        pct:0.72, color:'purple', rm:athlete.bench1RM },
+    { name:'DEADLIFT',    icon:'/deadlift.png',     pct:0.86, color:'green',  rm:athlete.deadlift1RM },
+    { name:'OHP',         icon:'/overhead.png',     pct:0.69, color:'orange', rm:athlete.ohp1RM },
+    { name:'ROMANIAN DL', icon:'/deadlift.png',     pct:0.70, color:'yellow', rm:Math.round(athlete.deadlift1RM * 0.56) },
+    { name:'FRONT SQUAT', icon:'/frontsquat.png',   pct:0.75, color:'teal',   rm:Math.round(athlete.squat1RM * 0.79) },
   ];
-
   const guessIdx = () => {
     if (!presetLift) return 0;
     const p = presetLift.toLowerCase();
@@ -326,38 +524,28 @@ function StartLift({ onStart, presetLift, athlete }) {
     if (p.includes('front squat')) return 5;
     return 0;
   };
-
   const [sel, setSel]       = useState(guessIdx);
   const [weight, setWeight] = useState(() => { const i = guessIdx(); return Math.round(lifts[i].rm * lifts[i].pct / 5) * 5; });
   const [sets, setSets]     = useState(5);
   const [reps, setReps]     = useState(5);
-
   const pick = (i) => { setSel(i); setWeight(Math.round(lifts[i].rm * lifts[i].pct / 5) * 5); };
   const pct1RM = Math.round((weight / lifts[sel].rm) * 100);
   const zone = pct1RM < 70 ? '⚡ Warm-up / Technique' : pct1RM < 80 ? '💪 Hypertrophy zone (70–80%)' : pct1RM < 90 ? '🏋️ Strength zone (80–90%)' : '🔥 Max effort zone (90%+)';
-
   return (
     <div className="screen">
       <div className="page-title gradient-blue">START LIFT</div>
-      <div className="page-sub">
-        {presetLift ? `📅 Pre-filled from calendar: ${presetLift} · Adjust as needed` : 'Choose your exercise · Weight auto-sets to working % · Adjust as needed'}
-      </div>
+      <div className="page-sub">{presetLift ? `📅 Pre-filled from calendar: ${presetLift}` : 'Choose your exercise · Weight auto-sets to working %'}</div>
       <div className="lift-grid">
         {lifts.map((l,i) => (
           <div key={i} className={`lift-btn ${sel===i?`sel-${l.color}`:''}`} onClick={() => pick(i)}>
-            <div className="lift-icon">
-              <img src={l.icon} alt={l.name} style={{ width: 160, height: 160, objectFit: 'contain' }} />
-            </div>
+            <div className="lift-icon"><img src={l.icon} alt={l.name} style={{ width: 72, height: 72, objectFit: 'contain' }} /></div>
             <div className="lift-name">{l.name}</div>
             <div className="lift-pr">1RM: {l.rm} lbs</div>
           </div>
         ))}
       </div>
       <div className="gcard gc-blue">
-        <div className="panel-header">
-          <span className="panel-title">SET WEIGHT</span>
-          <span className="badge badge-blue">{pct1RM}% of 1RM</span>
-        </div>
+        <div className="panel-header"><span className="panel-title">SET WEIGHT</span><span className="badge badge-blue">{pct1RM}% of 1RM</span></div>
         <div className="weight-row">
           <button className="wb wm" onClick={() => setWeight(w => Math.max(45,w-10))}>−10</button>
           <button className="wb wm" onClick={() => setWeight(w => Math.max(45,w-5))}>−5</button>
@@ -372,9 +560,7 @@ function StartLift({ onStart, presetLift, athlete }) {
           <span className="pill-label" style={{marginLeft:12}}>REPS</span>
           {[3,4,5,6,8,10].map(v => <span key={v} className={`pill ${reps===v?'pill-active':''}`} onClick={() => setReps(v)}>{v}</span>)}
         </div>
-        <button className="start-btn" onClick={() => onStart({ lift:lifts[sel].name, weight, sets, reps, rm:lifts[sel].rm })}>
-          START SESSION
-        </button>
+        <button className="start-btn" onClick={() => onStart({ lift:lifts[sel].name, weight, sets, reps, rm:lifts[sel].rm })}>START SESSION</button>
       </div>
     </div>
   );
@@ -392,69 +578,42 @@ function LiveSession({ session, athlete }) {
   const [coachMsg, setCoachMsg]         = useState('');
   const [coachLoading, setCoachLoading] = useState(false);
   const [done, setDone]                 = useState(false);
-
   const s = session || { lift:'Back Squat', weight:225, sets:5, reps:5, rm:athlete.squat1RM };
   const baseVel = (s.weight/s.rm) > 0.85 ? 0.55 : 0.72;
-  const repVels = useMemo(() =>
-    Array.from({length:s.reps},(_,i) => parseFloat((baseVel - i*(baseVel*0.045)).toFixed(2))),
-    [s.reps, baseVel]
-  );
-
+  const repVels = useMemo(() => Array.from({length:s.reps},(_,i) => parseFloat((baseVel - i*(baseVel*0.045)).toFixed(2))), [s.reps, baseVel]);
   const currentVel = repVels[Math.min(repCount,repVels.length-1)] || baseVel;
   const velDropoff = repCount>0 ? Math.round(((repVels[0]-currentVel)/repVels[0])*100) : 0;
   const tiltDeg    = (1.8 + repCount*0.22).toFixed(1);
   const REST_SECONDS = 180;
-
   const fetchCoach = useCallback(async (rep) => {
     if (rep < 1) return;
     setCoachLoading(true);
     try {
       const vel = repVels[rep-1] || currentVel;
-      const msg = await getLiveCoachMessage({
-        lift:s.lift, currentRep:rep, targetReps:s.reps,
-        thisRepVelocity:vel, rep1Velocity:repVels[0],
-        velocityDropoff:Math.round(((repVels[0]-vel)/repVels[0])*100),
-        tilt:(1.8+rep*0.22).toFixed(1),
-        setNumber:setNum, totalSets:s.sets, nutritionPhase:athlete.phase,
-      });
+      const msg = await getLiveCoachMessage({ lift:s.lift, currentRep:rep, targetReps:s.reps, thisRepVelocity:vel, rep1Velocity:repVels[0], velocityDropoff:Math.round(((repVels[0]-vel)/repVels[0])*100), tilt:(1.8+rep*0.22).toFixed(1), setNumber:setNum, totalSets:s.sets, nutritionPhase:athlete.phase });
       setCoachMsg(msg);
     } catch { setCoachMsg('Stay tight — drive through the heels!'); }
     setCoachLoading(false);
   }, [s, repVels, currentVel, setNum, athlete.phase]);
-
-  useEffect(() => {
-    const cl = setInterval(() => setSessionTimer(t => t+1), 1000);
-    return () => clearInterval(cl);
-  }, []);
-
+  useEffect(() => { const cl = setInterval(() => setSessionTimer(t => t+1), 1000); return () => clearInterval(cl); }, []);
   useEffect(() => {
     if (phase !== 'lifting' || done) return;
     const rt = setInterval(() => {
-      setRepCount(r => {
-        const next = r + 1;
-        if (next <= s.reps) { fetchCoach(next); return next; }
-        clearInterval(rt);
-        if (setNum < s.sets) { setPhase('resting'); setRestTimer(REST_SECONDS); }
-        else { setDone(true); }
-        return r;
-      });
+      setRepCount(r => { const next = r + 1; if (next <= s.reps) { fetchCoach(next); return next; } clearInterval(rt); if (setNum < s.sets) { setPhase('resting'); setRestTimer(REST_SECONDS); } else { setDone(true); } return r; });
     }, 2200);
     return () => clearInterval(rt);
   }, [phase, done, s, setNum, fetchCoach]);
-
   useEffect(() => {
     if (phase !== 'resting') return;
     if (restTimer <= 0) { setSetNum(n=>n+1); setRepCount(0); setPhase('lifting'); return; }
     const t = setTimeout(() => setRestTimer(r=>r-1), 1000);
     return () => clearTimeout(t);
   }, [phase, restTimer]);
-
   const sessionMins = Math.floor(sessionTimer/60);
   const sessionSecs = String(sessionTimer%60).padStart(2,'0');
   const restMins    = Math.floor(restTimer/60);
   const restSecs    = String(restTimer%60).padStart(2,'0');
   const restPct     = Math.round(((REST_SECONDS - restTimer) / REST_SECONDS) * 100);
-
   return (
     <div className="screen">
       <div className="page-title gradient-teal">LIVE SESSION</div>
@@ -472,12 +631,9 @@ function LiveSession({ session, athlete }) {
         </div>
       )}
       {done && (
-        <div className="rest-banner" style={{background:'rgba(0,200,83,0.08)',borderColor:'rgba(0,200,83,0.4)'}}>
+        <div className="rest-banner" style={{background:'rgba(0,255,179,0.07)',borderColor:'rgba(0,255,179,0.3)'}}>
           <div className="rest-icon">🏆</div>
-          <div>
-            <div className="rest-title" style={{color:'var(--neon-green)'}}>SESSION COMPLETE!</div>
-            <div style={{fontSize:12,color:'var(--muted)',fontWeight:700}}>All {s.sets} sets done · Head to Post-Session for your debrief</div>
-          </div>
+          <div><div className="rest-title" style={{color:'var(--neon-green)'}}>SESSION COMPLETE!</div><div style={{fontSize:12,color:'var(--muted)',fontWeight:700}}>All {s.sets} sets done · Head to Post-Session for your debrief</div></div>
         </div>
       )}
       <div className="stat-row">
@@ -491,28 +647,20 @@ function LiveSession({ session, athlete }) {
           <div className={`rep-num ${phase==='resting'?'gradient-green':'gradient-teal'}`}>{phase==='resting'?'✓':repCount}</div>
           <div className="rep-label">{phase==='resting'?'SET COMPLETE — RESTING':'REPS COUNTED BY IMU SENSOR'}</div>
         </div>
-        <div className="set-dots">
-          {Array.from({length:s.sets}).map((_,i)=><div key={i} className={`sdot ${i===setNum-1&&phase==='lifting'?'sdot-cur':i<setNum-1||(i===setNum-1&&phase==='resting')?'sdot-done':''}`}/>)}
-        </div>
+        <div className="set-dots">{Array.from({length:s.sets}).map((_,i)=><div key={i} className={`sdot ${i===setNum-1&&phase==='lifting'?'sdot-cur':i<setNum-1||(i===setNum-1&&phase==='resting')?'sdot-done':''}`}/>)}</div>
         <div style={{fontSize:10,color:'var(--muted)',fontWeight:800,marginTop:4}}>SETS COMPLETED</div>
       </div>
       <div className="panel-grid">
         <div className="gcard gc-blue">
           <div className="panel-header"><span className="panel-title">REP VELOCITY</span><span className="badge badge-blue">LIVE</span></div>
-          <div className="bar-chart">
-            {repVels.map((v,i)=><div key={i} className={`bar ${i<repCount?(v/repVels[0]>0.85?'bar-ok':'bar-warn'):'bar-dim'}`} style={{height:`${i<repCount?Math.round((v/repVels[0])*95):15}%`}}/>)}
-          </div>
-          <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:'var(--muted)',marginTop:4,fontWeight:800}}>
-            <span>Rep 1 · {repVels[0]} m/s</span><span>Rep {s.reps} · {repVels[s.reps-1]} m/s</span>
-          </div>
+          <div className="bar-chart">{repVels.map((v,i)=><div key={i} className={`bar ${i<repCount?(v/repVels[0]>0.85?'bar-ok':'bar-warn'):'bar-dim'}`} style={{height:`${i<repCount?Math.round((v/repVels[0])*95):15}%`}}/>)}</div>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:'var(--muted)',marginTop:4,fontWeight:800}}><span>Rep 1 · {repVels[0]} m/s</span><span>Rep {s.reps} · {repVels[s.reps-1]} m/s</span></div>
         </div>
         <div className="gcard gc-orange">
           <div className="panel-header"><span className="panel-title">BAR BALANCE</span><span className="badge badge-orange">IMU · LIVE</span></div>
           <div style={{textAlign:'center',fontSize:10,color:'var(--muted)',marginBottom:6,fontWeight:800}}>LEFT ←——————→ RIGHT</div>
           <div className="tilt-track"><div className="tilt-center"/><div className="tilt-fill" style={{width:Math.round(parseFloat(tiltDeg)*8),left:`calc(50% - ${Math.round(parseFloat(tiltDeg)*8)+4}px)`}}/></div>
-          <div style={{textAlign:'center',fontFamily:'Bebas Neue',fontSize:22,color:parseFloat(tiltDeg)>2.5?'var(--neon-orange)':'var(--neon-green)',letterSpacing:2,margin:'8px 0'}}>
-            {tiltDeg}° {parseFloat(tiltDeg)>2.5?'LEFT ⚠️':'LEFT ✓'}
-          </div>
+          <div style={{textAlign:'center',fontFamily:'Bebas Neue',fontSize:22,color:parseFloat(tiltDeg)>2.5?'var(--neon-orange)':'var(--neon-green)',letterSpacing:2,margin:'8px 0'}}>{tiltDeg}° {parseFloat(tiltDeg)>2.5?'LEFT ⚠️':'LEFT ✓'}</div>
           <div className="metric-row"><span className="mn">Left sensor</span><span className="mv" style={{color:'var(--neon-green)'}}>✓ Active</span></div>
           <div className="metric-row"><span className="mn">Right sensor</span><span className="mv" style={{color:'var(--neon-green)'}}>✓ Active</span></div>
         </div>
@@ -531,15 +679,7 @@ function LiveSession({ session, athlete }) {
 function PostSession({ athlete }) {
   const [aiLines, setAiLines] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  const s = {
-    ...FAKE_SESSION,
-    nutritionPhase: athlete.phase.charAt(0).toUpperCase() + athlete.phase.slice(1),
-    caloricTarget: athlete.caloricTarget,
-    bodyweight: athlete.bodyweight,
-    trainingAge: athlete.trainingAge,
-  };
-
+  const s = { ...FAKE_SESSION, nutritionPhase: athlete.phase.charAt(0).toUpperCase() + athlete.phase.slice(1), caloricTarget: athlete.caloricTarget, bodyweight: athlete.bodyweight, trainingAge: athlete.trainingAge };
   const fetchDebrief = useCallback(async () => {
     setLoading(true);
     try {
@@ -549,9 +689,7 @@ function PostSession({ athlete }) {
     } catch { setAiLines(['Could not reach AI — check your API key.']); }
     setLoading(false);
   }, [athlete]);
-
   useEffect(() => { fetchDebrief(); }, [fetchDebrief]);
-
   return (
     <div className="screen">
       <div className="page-title gradient-green">POST-SESSION</div>
@@ -571,42 +709,36 @@ function PostSession({ athlete }) {
             </div>
           ))}
         </div>
-        <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:'var(--muted)',marginTop:4,fontWeight:800}}>
-          {s.repVelocities.map((_,i)=><span key={i}>Rep {i+1}</span>)}
-        </div>
+        <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:'var(--muted)',marginTop:4,fontWeight:800}}>{s.repVelocities.map((_,i)=><span key={i}>Rep {i+1}</span>)}</div>
       </div>
       <div className="gcard gc-green">
         <div className="panel-header">
           <span className="panel-title">AI DEBRIEF</span>
-          <div style={{display:'flex',gap:8,alignItems:'center'}}>
-            <span className="badge badge-green">AI</span>
-            <button className="refresh-btn" onClick={fetchDebrief} disabled={loading}>↺ Refresh</button>
-          </div>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}><span className="badge badge-green">AI</span><button className="refresh-btn" onClick={fetchDebrief} disabled={loading}>↺ Refresh</button></div>
         </div>
-        {loading
-          ? <AICard dot="blue" text="" loading={true}/>
-          : aiLines.map((line,i)=><AICard key={i} dot={i===0?'green':i===1?'orange':'blue'} text={line} meta={i===0?'Performance':i===1?'Form analysis':'Next session'}/>)
-        }
+        {loading ? <AICard dot="blue" text="" loading={true}/> : aiLines.map((line,i)=><AICard key={i} dot={i===0?'green':i===1?'orange':'blue'} text={line} meta={i===0?'Performance':i===1?'Form analysis':'Next session'}/>)}
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────
-// CALENDAR
+// CALENDAR SCREEN — FULL REBUILD
 // ─────────────────────────────────────────────
 function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete }) {
-  const [phase, setPhase]         = useState(athlete.phase);
-  const [blocked, setBlocked]     = useState(new Set());
-  const [periodDays, setPeriodDays] = useState({}); // { dateKey: 'spotting'|'light'|'medium'|'heavy' }
-  const [modalDay, setModalDay]   = useState(null);
-  const [notif, setNotif]         = useState(null);
-  const [aiLines, setAiLines]     = useState([]);
+  const [phase, setPhase]       = useState(athlete.phase);
+  const [blocked, setBlocked]   = useState(new Set());
+  const [modalDay, setModalDay] = useState(null);
+  const [notif, setNotif]       = useState(null);
+  const [aiLines, setAiLines]   = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
+  // accessory completion state: { dateKey: { accessoryIndex: bool } }
+  const [accDone, setAccDone]   = useState({});
 
   const today = new Date(); today.setHours(0,0,0,0);
   const currentMonth = today.getMonth();
   const currentYear  = today.getFullYear();
+  const isFemale = athlete.gender === 'female';
 
   const showNotif = msg => { setNotif(msg); setTimeout(()=>setNotif(null),5000); };
 
@@ -633,38 +765,61 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
   const toggleBlock = dayKey => {
     const nb = new Set(blocked);
     if(nb.has(dayKey)){nb.delete(dayKey);showNotif('Day unblocked.');}
-    else{nb.add(dayKey);showNotif('Day blocked. AI updating your plan...');}
+    else{nb.add(dayKey);showNotif('Day blocked — AI updating...');}
     setBlocked(nb); fetchCalAI(phase,nb);
   };
 
-  const handleFlowSelect = (dateKey, flow, dayLift) => {
-    const updated = { ...periodDays, [dateKey]: flow };
-    setPeriodDays(updated);
-    // Heavy flow + leg-dominant lift → auto-swap to light upper body
-    if (flow === 'heavy' && dayLift && /squat|deadlift|leg/i.test(dayLift)) {
-      setSchedule(prev => prev.map(d =>
-        d.dateKey === dateKey
-          ? {
-              ...d,
-              lift: 'Upper Body (light)',
-              type: 'hypertrophy',
-              reason: 'Auto-adjusted: heavy flow day — lower body work moved to light upper body. Prioritize recovery and comfort.',
-              nutr: d.nutr + ' Iron-rich foods recommended today (spinach, red meat, lentils).',
-            }
-          : d
-      ));
-      showNotif('Heavy flow detected — leg day swapped to light upper body 💪');
-    }
+  const toggleAccessory = (dateKey, idx) => {
+    setAccDone(prev => ({
+      ...prev,
+      [dateKey]: { ...(prev[dateKey]||{}), [idx]: !(prev[dateKey]?.[idx]) }
+    }));
   };
 
-  const getDayBg = d => d.rest?'cal-rest-bg':phase==='bulk'?'cal-bulk-bg':phase==='cut'?'cal-cut-bg':'cal-maintain-bg';
+  const getDayBg = d => {
+    if (d.rest) return 'cal-rest-bg';
+    if (d.cyclePhaseKey === 'ovulatory') return 'cal-ovulatory-bg';
+    if (d.cyclePhaseKey === 'follicular') return 'cal-follicular-bg';
+    if (d.cyclePhaseKey === 'menstrual') return 'cal-menstrual-bg';
+    if (d.cyclePhaseKey === 'luteal_late') return 'cal-luteal-bg';
+    return phase==='bulk'?'cal-bulk-bg':phase==='cut'?'cal-cut-bg':'cal-maintain-bg';
+  };
+
   const phaseCalLabel = phase==='cut'?'pill-cut-cal':'pill-bulk-cal';
   const firstDayOfWeek = schedule[0]?.weekday ?? 0;
+
+  // Goal config label
+  const gc = getGoalConfig(athlete.goal);
 
   return (
     <div className="screen">
       <div className="page-title gradient-purple">TRAINING CALENDAR</div>
-      <div className="page-sub">{MONTH_NAMES[currentMonth]} {currentYear} · Tap any day for AI reasoning · ✕ to block · 🏋️ to start</div>
+      <div className="page-sub">{MONTH_NAMES[currentMonth]} {currentYear} · {athlete.goal} goal · {athlete.equipment} equipment · Tap day for details</div>
+
+      {/* Goal + Equipment summary bar */}
+      <div className="gcard gc-purple" style={{marginBottom:12,padding:'12px 16px'}}>
+        <div style={{display:'flex',gap:20,flexWrap:'wrap',alignItems:'center'}}>
+          <div><div style={{fontSize:8,letterSpacing:2,color:'var(--muted)',fontWeight:800}}>GOAL</div><div style={{fontFamily:'Bebas Neue',fontSize:16,color:'var(--neon-purple)',letterSpacing:1}}>{athlete.goal.toUpperCase()}</div></div>
+          <div><div style={{fontSize:8,letterSpacing:2,color:'var(--muted)',fontWeight:800}}>PROGRAM</div><div style={{fontFamily:'Bebas Neue',fontSize:16,color:'var(--neon-blue)',letterSpacing:1}}>{gc.mainSets}</div></div>
+          <div><div style={{fontSize:8,letterSpacing:2,color:'var(--muted)',fontWeight:800}}>EQUIPMENT</div><div style={{fontFamily:'Bebas Neue',fontSize:16,color:'var(--neon-teal)',letterSpacing:1}}>{athlete.equipment.toUpperCase()}</div></div>
+          <div><div style={{fontSize:8,letterSpacing:2,color:'var(--muted)',fontWeight:800}}>PHASE</div><div style={{fontFamily:'Bebas Neue',fontSize:16,color:'var(--neon-green)',letterSpacing:1}}>WK {athlete.phaseWeek}/{athlete.phaseTotalWeeks}</div></div>
+          {isFemale && athlete.cycleDay && (
+            <div style={{marginLeft:'auto'}}>
+              <div style={{fontSize:8,letterSpacing:2,color:'var(--neon-pink)',fontWeight:800}}>CYCLE PHASE</div>
+              <div style={{fontFamily:'Bebas Neue',fontSize:14,color:'var(--neon-pink)',letterSpacing:1}}>
+                {CYCLE_PHASES[getCyclePhase(athlete.cycleDay)]?.icon} {CYCLE_PHASES[getCyclePhase(athlete.cycleDay)]?.label}
+              </div>
+            </div>
+          )}
+        </div>
+        {isFemale && athlete.cycleDay && (
+          <div style={{marginTop:8,fontSize:11,color:'var(--neon-pink)',fontWeight:700,borderTop:'1px solid rgba(255,45,155,0.15)',paddingTop:8}}>
+            {CYCLE_PHASES[getCyclePhase(athlete.cycleDay)]?.advice}
+          </div>
+        )}
+      </div>
+
+      {/* Phase toggle */}
       <div className="phase-toggle">
         <span style={{fontSize:11,fontWeight:800,color:'var(--muted)'}}>CYCLE:</span>
         {[['bulk','ptog-bulk','🟢 BULKING'],['cut','ptog-cut','🔶 CUTTING'],['maintain','ptog-maintain','🔵 MAINTAIN']].map(([p,cls,lbl])=>(
@@ -673,18 +828,17 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
             {lbl}
           </button>
         ))}
-        <span style={{fontSize:11,fontWeight:800,color:'var(--muted)',marginLeft:8}}>Wk {athlete.phaseWeek}/{athlete.phaseTotalWeeks}</span>
       </div>
-      {notif&&<div className="notification"><div className="notif-icon">🤖</div><div><div className="notif-text">{notif}</div><div className="notif-sub">AI updated your plan · tap any day to review</div></div></div>}
+
+      {notif&&<div className="notification"><div className="notif-icon">🤖</div><div><div className="notif-text">{notif}</div><div className="notif-sub">Calendar updated · tap any day to review</div></div></div>}
       {schedule.some(d=>d._coachRebuilt)&&(
-        <div className="notification" style={{background:'rgba(255,0,102,0.06)',borderColor:'rgba(255,0,102,0.25)'}}>
+        <div className="notification" style={{background:'rgba(255,45,155,0.06)',borderColor:'rgba(255,45,155,0.25)'}}>
           <div className="notif-icon">🤖</div>
-          <div>
-            <div className="notif-text" style={{color:'var(--neon-pink)'}}>AI Coach rebuilt your full schedule</div>
-            <div className="notif-sub">Pink days were changed · tap any day to see reasoning</div>
-          </div>
+          <div><div className="notif-text" style={{color:'var(--neon-pink)'}}>AI Coach rebuilt your full schedule</div><div className="notif-sub">Pink days were changed · tap any day to see reasoning</div></div>
         </div>
       )}
+
+      {/* Phase banner */}
       <div className={`phase-banner ${phase==='bulk'?'bulk-banner':phase==='cut'?'cut-banner':'maintain-banner'}`}>
         <div>
           <div style={{fontFamily:'Bebas Neue',fontSize:20,letterSpacing:2,color:phase==='bulk'?'var(--neon-green)':phase==='cut'?'var(--neon-orange)':'var(--neon-blue)'}}>
@@ -699,19 +853,27 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
           <div style={{fontFamily:'Bebas Neue',fontSize:18,color:'var(--neon-yellow)',letterSpacing:1}}>{phase==='bulk'?'CUT':'BULK'} · +12 DAYS</div>
         </div>
       </div>
+
+      {/* Legend */}
       <div className="legend-row">
         {[
-          ['rgba(124,0,255,0.5)','Lift'],
-          ['rgba(0,200,83,0.5)','Bulk'],
-          ['rgba(255,98,0,0.5)','Cut'],
-          ['rgba(200,200,200,0.7)','Rest'],
-          ['rgba(0,149,255,0.5)','Today'],
-          ['rgba(255,0,102,0.4)','Blocked'],
-          ...(athlete.gender==='female' ? [['rgba(255,0,102,0.6)','Period']] : []),
+          ['rgba(185,77,255,0.5)','Lift'],
+          ['rgba(0,255,179,0.5)','Bulk'],
+          ['rgba(255,107,53,0.5)','Cut'],
+          ['rgba(255,255,255,0.12)','Rest'],
+          ['rgba(77,184,255,0.5)','Today'],
+          ...(isFemale ? [
+            ['rgba(255,215,0,0.5)','Ovulatory 🏆'],
+            ['rgba(0,255,179,0.4)','Follicular 💪'],
+            ['rgba(255,45,155,0.5)','Menstrual 🌑'],
+            ['rgba(185,77,255,0.4)','Late Luteal'],
+          ] : []),
         ].map(([bg,lbl])=>(
           <div key={lbl} className="leg-item"><div className="leg-dot" style={{background:bg}}/>{lbl}</div>
         ))}
       </div>
+
+      {/* Calendar grid */}
       <div className="gcard gc-purple" style={{marginBottom:14}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
           <div style={{fontFamily:'Bebas Neue',fontSize:20,letterSpacing:2,color:'var(--text)'}}>{MONTH_NAMES[currentMonth].toUpperCase()} {currentYear}</div>
@@ -723,27 +885,31 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
           {schedule.map(day=>{
             const isBlocked = blocked.has(day.dateKey);
             const wtype = day.type ? WORKOUT_TYPES[day.type] : null;
-            const isPeriod = !!periodDays[day.dateKey];
-            const periodFlow = periodDays[day.dateKey];
+            const dayAccDone = accDone[day.dateKey] || {};
+            const totalAcc = day.accessories?.length || 0;
+            const doneAcc  = Object.values(dayAccDone).filter(Boolean).length;
             return (
               <div key={day.dateKey}
                 className={`cal-day ${getDayBg(day)} ${day.today?'cal-today':''} ${isBlocked?'cal-blocked':''}`}
-                style={isPeriod ? {outline:'2px solid rgba(255,0,102,0.4)'} : {}}
                 onClick={()=>!isBlocked&&setModalDay(day)}>
                 <div className={`cal-num ${day.today?'cal-num-today':''}`}>
                   {day.dayNum}{day.today&&<span style={{fontSize:7,color:'var(--neon-blue)',marginLeft:3,fontWeight:900}}>TODAY</span>}
                 </div>
+                {/* Cycle phase icon for females */}
+                {isFemale && day.cyclePhaseInfo && (
+                  <span style={{fontSize:8,position:'absolute',top:5,left:5}}>{day.cyclePhaseInfo.icon}</span>
+                )}
                 {isBlocked
                   ?<span className="cpill pill-blocked">BLOCKED</span>
                   :day.lift
-                  ?<span className="cpill pill-lift" style={day._coachRebuilt?{background:'rgba(255,0,102,0.15)',color:'var(--neon-pink)'}:{}}>{day._coachRebuilt?'🤖 ':''}{day.lift}</span>
+                  ?<span className="cpill pill-lift" style={day._coachRebuilt?{background:'rgba(255,45,155,0.15)',color:'var(--neon-pink)'}:{}}>{day._coachRebuilt?'🤖 ':''}{day.lift}</span>
                   :<span className="cpill pill-rest-cal">{day._coachRebuilt?'🤖 Rest':'Rest'}</span>}
                 {!isBlocked&&day.cal&&<span className={`cpill ${phaseCalLabel}`}>{day.cal} kcal</span>}
                 {!isBlocked&&wtype&&<span className="cpill" style={{background:wtype.bg,color:wtype.color,fontSize:7}}>{wtype.label}</span>}
-                {/* Period pill on tile */}
-                {athlete.gender==='female'&&isPeriod&&(
-                  <span className={`cpill ${periodFlow==='heavy'?'cpill-period-heavy':'cpill-period'}`}>
-                    🩸 {periodFlow}
+                {/* Accessory progress badge */}
+                {!isBlocked && totalAcc > 0 && (
+                  <span className="cpill" style={{background: doneAcc===totalAcc?'rgba(0,255,179,0.15)':'rgba(255,255,255,0.06)', color: doneAcc===totalAcc?'var(--neon-green)':'var(--muted)', fontSize:7}}>
+                    {doneAcc===totalAcc?'✓ ':''}{doneAcc}/{totalAcc} acc
                   </span>
                 )}
                 {!isBlocked&&day.lift&&(
@@ -757,6 +923,8 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
           })}
         </div>
       </div>
+
+      {/* AI recommendation */}
       <div className="gcard gc-blue">
         <div className="panel-header">
           <span className="panel-title">AI SCHEDULE RECOMMENDATION</span>
@@ -772,51 +940,64 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
       {/* ── DAY MODAL ── */}
       {modalDay&&(
         <div className="modal-overlay" onClick={e=>e.target.classList.contains('modal-overlay')&&setModalDay(null)}>
-          <div className="modal">
+          <div className="modal" style={{maxWidth:500,maxHeight:'85vh',overflowY:'auto'}}>
             <h2>{modalDay.lift||'REST DAY'}</h2>
             <div className="modal-sub">
               {DAY_NAMES[modalDay.weekday]} · {MONTH_NAMES[modalDay.month]} {modalDay.dayNum}, {modalDay.year}
               {modalDay.today?' · TODAY':''} · {phase.charAt(0).toUpperCase()+phase.slice(1)} Phase
             </div>
+
+            {/* Cycle phase banner in modal */}
+            {isFemale && modalDay.cyclePhaseInfo && (
+              <div style={{background:`rgba(255,45,155,0.08)`,border:'1px solid rgba(255,45,155,0.25)',borderRadius:10,padding:'10px 12px',marginBottom:12}}>
+                <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-pink)',fontWeight:800,marginBottom:4}}>
+                  {modalDay.cyclePhaseInfo.icon} {modalDay.cyclePhaseInfo.label.toUpperCase()} · CYCLE DAY {modalDay.cycleDay}
+                </div>
+                <div style={{fontSize:12,fontWeight:700,color:'var(--text)'}}>{modalDay.cyclePhaseInfo.advice}</div>
+              </div>
+            )}
+
             {modalDay.type&&(()=>{const wt=WORKOUT_TYPES[modalDay.type];return<span className="why-tag" style={{background:wt.bg,borderColor:wt.border,color:wt.color}}>{wt.label}</span>;})()}
             <div className="reason-block"><div className="reason-label">WHY THIS IS SCHEDULED</div><div className="reason-text">{modalDay.reason}</div></div>
-            <div className="reason-block"><div className="reason-label">NUTRITION CONTEXT</div><div className="reason-text">{modalDay.nutr}</div></div>
+            <div className="reason-block"><div className="reason-label">NUTRITION TODAY</div><div className="reason-text">{modalDay.nutr}</div></div>
 
-            {/* ── PERIOD SECTION (female only) ── */}
-            {athlete.gender === 'female' && (
-              <div className="period-section">
-                <div className="period-section-title">🩸 CYCLE TRACKING</div>
-                {periodDays[modalDay.dateKey] ? (
-                  <>
-                    <div style={{fontSize:12,fontWeight:700,color:'var(--neon-pink)',marginBottom:8}}>
-                      Period day logged · tap flow to update:
+            {/* ── ACCESSORIES ── */}
+            {modalDay.accessories && modalDay.accessories.length > 0 && (
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-teal)',fontWeight:800,marginBottom:8}}>
+                  🏋️ ACCESSORIES — {athlete.equipment.toUpperCase()} EQUIPMENT
+                </div>
+                {modalDay.accessories.map((acc, idx) => {
+                  const isDone = !!(accDone[modalDay.dateKey]?.[idx]);
+                  return (
+                    <div key={idx}
+                      onClick={() => toggleAccessory(modalDay.dateKey, idx)}
+                      style={{
+                        display:'flex', alignItems:'center', gap:10, padding:'9px 12px',
+                        borderRadius:9, marginBottom:6, cursor:'pointer',
+                        background: isDone ? 'rgba(0,255,179,0.08)' : 'rgba(255,255,255,0.04)',
+                        border: `1px solid ${isDone ? 'rgba(0,255,179,0.35)' : 'rgba(255,255,255,0.08)'}`,
+                        transition:'all 0.15s',
+                      }}>
+                      <div style={{
+                        width:18, height:18, borderRadius:'50%', flexShrink:0,
+                        background: isDone ? 'var(--neon-green)' : 'rgba(255,255,255,0.07)',
+                        border: `1px solid ${isDone ? 'var(--neon-green)' : 'rgba(255,255,255,0.15)'}`,
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        fontSize:10, color: isDone ? '#07050f' : 'transparent',
+                        boxShadow: isDone ? '0 0 8px var(--neon-green)' : 'none',
+                      }}>✓</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:12,fontWeight:800,color:isDone?'var(--neon-green)':'var(--text)',textDecoration:isDone?'none':'none'}}>{acc.name}</div>
+                        <div style={{fontSize:10,color:'var(--muted)',fontWeight:700}}>{acc.muscle}</div>
+                      </div>
+                      <div style={{fontSize:10,fontWeight:800,color:isDone?'var(--neon-green)':'var(--muted)'}}>{isDone?'DONE':'TAP'}</div>
                     </div>
-                    <div className="flow-row">
-                      {[
-                        ['spotting','💧 Spotting','flow-spotting'],
-                        ['light',   '🟡 Light',   'flow-light'   ],
-                        ['medium',  '🟠 Medium',  'flow-medium'  ],
-                        ['heavy',   '🔴 Heavy',   'flow-heavy'   ],
-                      ].map(([f,lbl,cls])=>(
-                        <button key={f}
-                          className={`flow-btn ${cls} ${periodDays[modalDay.dateKey]===f?'flow-active':''}`}
-                          onClick={()=>handleFlowSelect(modalDay.dateKey, f, modalDay.lift)}>
-                          {lbl}
-                        </button>
-                      ))}
-                    </div>
-                    <button
-                      style={{marginTop:10,fontSize:11,fontWeight:800,color:'var(--muted)',background:'none',border:'none',cursor:'pointer',padding:0}}
-                      onClick={()=>setPeriodDays(p=>{ const n={...p}; delete n[modalDay.dateKey]; return n; })}>
-                      ✕ Remove period log
-                    </button>
-                  </>
-                ) : (
-                  <button className="period-btn" style={{width:'100%'}}
-                    onClick={()=>setPeriodDays(p=>({...p,[modalDay.dateKey]:'medium'}))}>
-                    🩸 Log as Period Day
-                  </button>
-                )}
+                  );
+                })}
+                <div style={{fontSize:10,color:'var(--muted)',fontWeight:700,marginTop:4,textAlign:'right'}}>
+                  {Object.values(accDone[modalDay.dateKey]||{}).filter(Boolean).length}/{modalDay.accessories.length} completed
+                </div>
               </div>
             )}
 
@@ -825,7 +1006,7 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
               <button className="mbtn mbtn-block" onClick={()=>{toggleBlock(modalDay.dateKey);setModalDay(null);}}>✕ Block Day</button>
               {modalDay.lift&&(
                 <button className="mbtn mbtn-swap"
-                  style={{background:'rgba(0,200,83,0.1)',borderColor:'rgba(0,200,83,0.4)',color:'var(--neon-green)'}}
+                  style={{background:'rgba(0,255,179,0.08)',borderColor:'rgba(0,255,179,0.3)',color:'var(--neon-green)'}}
                   onClick={()=>{onStartFromCalendar(modalDay.lift);setModalDay(null);}}>
                   🏋️ Start This Lift
                 </button>
@@ -842,12 +1023,20 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
 // AI COACH
 // ─────────────────────────────────────────────
 function AICoach({ schedule, onRebuildSchedule, onGoToCalendar, athlete }) {
-  const [messages, setMessages] = useState([
-    {role:'assistant', content:`Hey ${athlete.firstName}! I'm your Coach Nova. I know your full training history — squats, bench, deads, everything. What's on your mind? Tell me about life, training, goals — anything that affects your schedule and I'll adjust it in real time.`}
-  ]);
-  const [input, setInput]     = useState('');
+  const defaultMsg = { role:'assistant', content:`Hey ${athlete.firstName}! I'm your Coach Nova. I know your full training history — squats, bench, deads, everything. What's on your mind? Tell me about life, training, goals — anything that affects your schedule and I'll adjust it in real time.` };
+
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = localStorage.getItem('coachMessages');
+      return saved ? JSON.parse(saved) : [defaultMsg];
+    } catch { return [defaultMsg]; }
+  });
+  const [input, setInput]   = useState('');
   const [loading, setLoading] = useState(false);
-  const bottomRef             = useRef(null);
+  const bottomRef           = useRef(null);
+
+  useEffect(() => { localStorage.setItem('coachMessages', JSON.stringify(messages)); }, [messages]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({behavior:'smooth'}); }, [messages]);
 
   const athleteContext = `
 Athlete: ${athlete.name} | Age: ${athlete.age} | Gender: ${athlete.gender}
@@ -857,17 +1046,11 @@ Goal: ${athlete.goal} | Equipment: ${athlete.equipment} | Days/week: ${athlete.d
 1RMs — Squat: ${athlete.squat1RM} lbs | Bench: ${athlete.bench1RM} lbs | Deadlift: ${athlete.deadlift1RM} lbs | OHP: ${athlete.ohp1RM} lbs
 Last session: ${FAKE_SESSION.lift} @ ${FAKE_SESSION.weight} lbs, 5x5, velocity dropoff ${FAKE_SESSION.velocityDropoff}%, fatigue ${FAKE_SESSION.fatigueIndex}%
 Bar tilt: ${FAKE_SESSION.avgTilt}° left (persistent, 3 sessions) | Caloric target: ${athlete.caloricTarget} kcal/day
+${athlete.gender==='female'&&athlete.cycleDay?`Cycle day: ${athlete.cycleDay} (${CYCLE_PHASES[getCyclePhase(athlete.cycleDay)]?.label} phase)`:''}
 ${athlete.injuryNotes ? `Injury notes: ${athlete.injuryNotes}` : ''}
 `.trim();
 
-  const scheduleForPrompt = schedule.map(d => ({
-    dateLabel: d.dateLabel,
-    weekday: DAY_NAMES[d.weekday],
-    lift: d.lift,
-    rest: d.rest,
-  }));
-
-  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}); },[messages]);
+  const scheduleForPrompt = schedule.map(d => ({ dateLabel: d.dateLabel, weekday: DAY_NAMES[d.weekday], lift: d.lift, rest: d.rest }));
 
   const send = async () => {
     if (!input.trim() || loading) return;
@@ -882,13 +1065,12 @@ ${athlete.injuryNotes ? `Injury notes: ${athlete.injuryNotes}` : ''}
       const { reply, newSchedule } = result;
       if (newSchedule && newSchedule.length > 0) onRebuildSchedule(newSchedule);
       setMessages(h=>[...h,{role:'assistant',content:reply,scheduleRebuilt:!!(newSchedule&&newSchedule.length>0)}]);
-    } catch {
-      setMessages(h=>[...h,{role:'assistant',content:'Connection issue — check your API key and try again.'}]);
-    }
+    } catch { setMessages(h=>[...h,{role:'assistant',content:'Connection issue — check your API key and try again.'}]); }
     setLoading(false);
   };
 
   const handleKey = e => { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();} };
+  const clearChat = () => { localStorage.removeItem('coachMessages'); setMessages([defaultMsg]); };
 
   const quickPrompts = [
     "Just got a girlfriend, gym time might drop 👀",
@@ -906,18 +1088,17 @@ ${athlete.injuryNotes ? `Injury notes: ${athlete.injuryNotes}` : ''}
       <div className="coach-context-bar">
         <div className="coach-ctx-item"><span className="coach-ctx-label">PHASE</span><span className="coach-ctx-val">{athlete.phase.charAt(0).toUpperCase()+athlete.phase.slice(1)} Wk {athlete.phaseWeek}</span></div>
         <div className="coach-ctx-item"><span className="coach-ctx-label">SQUAT 1RM</span><span className="coach-ctx-val">{athlete.squat1RM} lbs</span></div>
-        <div className="coach-ctx-item"><span className="coach-ctx-label">LAST FATIGUE</span><span className="coach-ctx-val" style={{color:FAKE_SESSION.fatigueIndex>30?'var(--neon-orange)':'var(--neon-green)'}}>{FAKE_SESSION.fatigueIndex}%</span></div>
+        <div className="coach-ctx-item"><span className="ChatCoachReply:label">LAST FATIGUE</span><span className="coach-ctx-val" style={{color:FAKE_SESSION.fatigueIndex>30?'var(--neon-orange)':'var(--neon-green)'}}>{FAKE_SESSION.fatigueIndex}%</span></div>
         <div className="coach-ctx-item"><span className="coach-ctx-label">GOAL</span><span className="coach-ctx-val">{athlete.goal}</span></div>
-        <button className="cal-peek-btn" onClick={onGoToCalendar}>📅 View Calendar</button>
+        <button className="cal-peek-btn" onClick={onGoToCalendar}>📅 Calendar</button>
+        <button className="refresh-btn" onClick={clearChat} style={{marginLeft:4}}>Clear Chat</button>
       </div>
-      <div className="quick-prompts">
-        {quickPrompts.map((p,i)=><button key={i} className="qprompt" onClick={()=>setInput(p)}>{p}</button>)}
-      </div>
+      <div className="quick-prompts">{quickPrompts.map((p,i)=><button key={i} className="qprompt" onClick={()=>setInput(p)}>{p}</button>)}</div>
       <div className="chat-window">
         {messages.map((m,i)=>(
           <div key={i}>
             <div className={`chat-bubble ${m.role==='user'?'bubble-user':'bubble-ai'}`}>
-              {m.role==='assistant'&&<div className="bubble-avatar">BB</div>}
+              {m.role==='assistant'&&<div className="bubble-avatar">CN</div>}
               <div className={`bubble-text ${m.role==='user'?'bubble-text-user':'bubble-text-ai'}`}>{m.content}</div>
             </div>
             {m.role==='assistant'&&m.scheduleRebuilt&&(
@@ -931,18 +1112,14 @@ ${athlete.injuryNotes ? `Injury notes: ${athlete.injuryNotes}` : ''}
         ))}
         {loading&&(
           <div className="chat-bubble bubble-ai">
-            <div className="bubble-avatar">BB</div>
-            <div className="bubble-text bubble-text-ai">
-              <div className="ai-loading"><div className="ai-spinner"/><span style={{fontSize:12,color:'var(--muted)',fontWeight:700}}>Coach is thinking...</span></div>
-            </div>
+            <div className="bubble-avatar">CN</div>
+            <div className="bubble-text bubble-text-ai"><div className="ai-loading"><div className="ai-spinner"/><span style={{fontSize:12,color:'var(--muted)',fontWeight:700}}>Coach is thinking...</span></div></div>
           </div>
         )}
         <div ref={bottomRef}/>
       </div>
       <div className="chat-input-row">
-        <textarea className="chat-input" rows={2}
-          placeholder="Talk to your coach... 'I'm exhausted' · 'skip squats this week' · 'add more volume'"
-          value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey}/>
+        <textarea className="chat-input" rows={2} placeholder="Talk to your coach... 'I'm exhausted' · 'skip squats this week' · 'add more volume'" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey}/>
         <button className="chat-send" onClick={send} disabled={loading||!input.trim()}>SEND</button>
       </div>
     </div>
@@ -953,10 +1130,9 @@ ${athlete.injuryNotes ? `Injury notes: ${athlete.injuryNotes}` : ''}
 // NUTRITION
 // ─────────────────────────────────────────────
 function Nutrition({ athlete }) {
-  const [surplus, setSurplus]     = useState(athlete.phase==='bulk'?350:athlete.phase==='cut'?-300:0);
-  const [aiLines, setAiLines]     = useState([]);
+  const [surplus, setSurplus] = useState(athlete.phase==='bulk'?350:athlete.phase==='cut'?-300:0);
+  const [aiLines, setAiLines] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
-
   const bw = athlete.bodyweight;
   const caloricTarget = surplus>100?Math.round(bw*17+surplus):surplus<-100?Math.round(bw*13+Math.abs(surplus)):Math.round(bw*15);
   const proteinTarget = bw;
@@ -966,33 +1142,22 @@ function Nutrition({ athlete }) {
   const carbs   = Math.round(carbTarget*0.89);
   const fat     = Math.round(fatTarget*0.85);
   const logged  = protein*4+carbs*4+fat*9;
-
   const getInfo = v => {
     if(v>100)  return {label:`+${v} KCAL SURPLUS`, tip:'Building muscle', color:'var(--neon-green)',  badge:'BULK',    cls:'badge-green'};
     if(v<-100) return {label:`${Math.abs(v)} KCAL DEFICIT`, tip:'Fat loss phase', color:'var(--neon-orange)', badge:'CUT', cls:'badge-orange'};
     return            {label:'MAINTENANCE', tip:'Body recomposition', color:'var(--neon-blue)', badge:'MAINTAIN', cls:'badge-blue'};
   };
   const info = getInfo(surplus);
-
   const fetchNutrAI = useCallback(async () => {
     setAiLoading(true);
     try {
-      const raw = await getNutritionAdvice({
-        phase:surplus>100?'Bulk':surplus<-100?'Cut':'Maintenance',
-        caloricTarget, caloriesLogged:logged,
-        protein, proteinTarget, carbs, carbTarget, fat, fatTarget,
-        todaysLift:'Squat 5x5 @ 225 lbs',
-        lastFatigue:FAKE_SESSION.fatigueIndex,
-        bodyweight:bw, phaseWeek:athlete.phaseWeek, phaseTotalWeeks:athlete.phaseTotalWeeks,
-      });
+      const raw = await getNutritionAdvice({ phase:surplus>100?'Bulk':surplus<-100?'Cut':'Maintenance', caloricTarget, caloriesLogged:logged, protein, proteinTarget, carbs, carbTarget, fat, fatTarget, todaysLift:'Squat 5x5 @ 225 lbs', lastFatigue:FAKE_SESSION.fatigueIndex, bodyweight:bw, phaseWeek:athlete.phaseWeek, phaseTotalWeeks:athlete.phaseTotalWeeks });
       const lines = raw.split('\n').filter(l=>l.trim().startsWith('•')).map(l=>l.trim().replace(/^•\s*/,''));
       setAiLines(lines.length>0?lines:[raw]);
     } catch { setAiLines(['Could not reach AI — check your API key.']); }
     setAiLoading(false);
   },[surplus,caloricTarget,logged,protein,proteinTarget,carbs,carbTarget,fat,fatTarget,bw,athlete]);
-
   useEffect(()=>{fetchNutrAI();},[fetchNutrAI]);
-
   return (
     <div className="screen">
       <div className="page-title gradient-orange">NUTRITION</div>
@@ -1034,13 +1199,9 @@ function Nutrition({ athlete }) {
         <div className="gcard gc-purple">
           <div className="panel-header">
             <span className="panel-title">AI NUTRITION</span>
-            <div style={{display:'flex',gap:8,alignItems:'center'}}>
-              <span className="badge badge-purple">AI</span>
-              <button className="refresh-btn" onClick={fetchNutrAI} disabled={aiLoading}>↺ Refresh</button>
-            </div>
+            <div style={{display:'flex',gap:8,alignItems:'center'}}><span className="badge badge-purple">AI</span><button className="refresh-btn" onClick={fetchNutrAI} disabled={aiLoading}>↺ Refresh</button></div>
           </div>
-          {aiLoading?<AICard dot="blue" text="" loading={true}/>
-            :aiLines.map((line,i)=><AICard key={i} dot={i===0?'green':'blue'} text={line} meta={i===0?"Today's advice":'Phase strategy'}/>)}
+          {aiLoading?<AICard dot="blue" text="" loading={true}/>:aiLines.map((line,i)=><AICard key={i} dot={i===0?'green':'blue'} text={line} meta={i===0?"Today's advice":'Phase strategy'}/>)}
         </div>
       </div>
     </div>
@@ -1104,32 +1265,33 @@ function Progress({ athlete }) {
 // ROOT APP
 // ─────────────────────────────────────────────
 export default function App() {
-  const [athlete, setAthlete]       = useState(DEFAULT_ATHLETE);
+  const [athlete, setAthlete] = useState(() => {
+    try { const s = localStorage.getItem('athleteProfile'); return s ? JSON.parse(s) : DEFAULT_ATHLETE; }
+    catch { return DEFAULT_ATHLETE; }
+  });
   const [screen, setScreen]         = useState('setup');
   const [session, setSession]       = useState(null);
   const [presetLift, setPresetLift] = useState(null);
-  const [schedule, setSchedule]     = useState(() => buildSchedule(DEFAULT_ATHLETE));
+  const [schedule, setSchedule]     = useState(() => buildSchedule(athlete));
 
   const handleSaveProfile = useCallback((updated) => {
     setAthlete(updated);
     setSchedule(buildSchedule(updated));
   }, []);
 
-  const handleStartFromCalendar = (liftName) => {
-    setPresetLift(liftName);
-    setScreen('setup');
-  };
+  const handleStartFromCalendar = (liftName) => { setPresetLift(liftName); setScreen('setup'); };
 
   const rebuildSchedule = useCallback((newDays) => {
     if (!newDays || newDays.length === 0) return;
     setSchedule(prev => newDays.slice(0,14).map((gptDay,i) => ({
       ...prev[i],
-      lift:   gptDay.lift   ?? null,
-      type:   gptDay.type   ?? null,
-      cal:    gptDay.cal    ?? '+200',
-      rest:   gptDay.rest   ?? false,
-      reason: gptDay.reason ?? prev[i]?.reason ?? '',
-      nutr:   gptDay.nutr   ?? prev[i]?.nutr   ?? '',
+      lift:        gptDay.lift   ?? null,
+      type:        gptDay.type   ?? null,
+      cal:         gptDay.cal    ?? '+200',
+      rest:        gptDay.rest   ?? false,
+      reason:      gptDay.reason ?? prev[i]?.reason ?? '',
+      nutr:        gptDay.nutr   ?? prev[i]?.nutr   ?? '',
+      accessories: prev[i]?.accessories ?? [],
       _coachRebuilt: true,
     })));
   }, []);
@@ -1150,7 +1312,7 @@ export default function App() {
     <div className="app">
       <nav className="topnav">
         <div className="logo" style={{display:'flex',alignItems:'center',gap:10}}>
-          <img src="/logo.png" alt="Coach Nova" style={{width:80,height:80,objectFit:'contain'}}/>
+          <img src="/logo.png" alt="Coach Nova" style={{width:52,height:52,objectFit:'contain'}}/>
           COACH<span>NOVA</span>
         </div>
         <div className="nav-right">
@@ -1171,19 +1333,11 @@ export default function App() {
             </React.Fragment>
           ))}
           <div className="sidebar-footer">
-            <div
-              className="user-chip"
-              onClick={()=>setScreen('profile')}
-              style={{cursor:'pointer', borderRadius:10, outline: screen==='profile'?'1px solid var(--neon-blue)':'none'}}
-            >
-              <div className="avatar" style={{
-                background: screen==='profile'
-                  ? 'linear-gradient(135deg,var(--neon-blue),var(--neon-purple))'
-                  : undefined,
-              }}>{initials}</div>
+            <div className="user-chip" onClick={()=>setScreen('profile')} style={{cursor:'pointer',borderRadius:10,outline:screen==='profile'?'1px solid var(--neon-blue)':'none'}}>
+              <div className="avatar" style={{background:screen==='profile'?'linear-gradient(135deg,var(--neon-blue),var(--neon-purple))':undefined}}>{initials}</div>
               <div>
                 <div className="user-name">{athlete.name}</div>
-                <div className="user-sub">{athlete.phase.charAt(0).toUpperCase()+athlete.phase.slice(1)} · Wk {athlete.phaseWeek} · Tap to edit</div>
+                <div className="user-sub">{athlete.goal} · {athlete.phase} · Tap to edit</div>
               </div>
             </div>
           </div>
