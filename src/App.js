@@ -143,6 +143,14 @@ function AICard({ dot, text, meta, loading }) {
 // ─────────────────────────────────────────────
 // PROFILE SCREEN
 // ─────────────────────────────────────────────
+function InputRow({ label, children }) {
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:4,marginBottom:14}}>
+      <label style={{fontSize:10,fontWeight:900,color:'var(--muted)',letterSpacing:1}}>{label}</label>
+      {children}
+    </div>
+  );
+}
 function ProfileScreen({ athlete, onSave }) {
   const [form, setForm] = useState({ ...athlete });
   const [saved, setSaved] = useState(false);
@@ -183,12 +191,7 @@ function ProfileScreen({ athlete, onSave }) {
   };
   const selectStyle = { ...inputStyle, cursor:'pointer' };
 
-  const InputRow = ({ label, children }) => (
-    <div style={{display:'flex',flexDirection:'column',gap:4,marginBottom:14}}>
-      <label style={{fontSize:10,fontWeight:900,color:'var(--muted)',letterSpacing:1}}>{label}</label>
-      {children}
-    </div>
-  );
+
 
   return (
     <div className="screen">
