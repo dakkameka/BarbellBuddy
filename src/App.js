@@ -346,7 +346,7 @@ function StartLift({ onStart, presetLift, athlete }) {
         {lifts.map((l,i) => (
           <div key={i} className={`lift-btn ${sel===i?`sel-${l.color}`:''}`} onClick={() => pick(i)}>
             <div className="lift-icon">
-              <img src={l.icon} alt={l.name} style={{ width: 80, height: 80, objectFit: 'contain' }} />
+              <img src={l.icon} alt={l.name} style={{ width: 160, height: 160, objectFit: 'contain' }} />
             </div>
             <div className="lift-name">{l.name}</div>
             <div className="lift-pr">1RM: {l.rm} lbs</div>
