@@ -312,7 +312,7 @@ function StartLift({ onStart, presetLift, athlete }) {
   { name:'BENCH PRESS', icon:'/bench.png',        pct:0.72, color:'purple', rm:athlete.bench1RM },
   { name:'DEADLIFT',    icon:'/deadlift.png',     pct:0.86, color:'green',  rm:athlete.deadlift1RM },
   { name:'OHP',         icon:'/overhead.png',     pct:0.69, color:'orange', rm:athlete.ohp1RM },
-  { name:'ROMANIAN DL', icon:'/romanian.png',     pct:0.70, color:'yellow', rm:Math.round(athlete.deadlift1RM * 0.56) },
+  { name:'ROMANIAN DL', icon:'/deadlift.png',     pct:0.70, color:'yellow', rm:Math.round(athlete.deadlift1RM * 0.56) },
   { name:'FRONT SQUAT', icon:'/frontsquat.png',   pct:0.75, color:'teal',   rm:Math.round(athlete.squat1RM * 0.79) },
   ];
 
