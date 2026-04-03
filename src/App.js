@@ -748,7 +748,7 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
 // ─────────────────────────────────────────────
 function AICoach({ schedule, onRebuildSchedule, onGoToCalendar, athlete }) {
   const [messages, setMessages] = useState([
-    {role:'assistant', content:`Hey ${athlete.firstName}! I'm your BarbellBuddy coach. I know your full training history — squats, bench, deads, everything. What's on your mind? Tell me about life, training, goals — anything that affects your schedule and I'll adjust it in real time.`}
+    {role:'assistant', content:`Hey ${athlete.firstName}! I'm your Coach Nova. I know your full training history — squats, bench, deads, everything. What's on your mind? Tell me about life, training, goals — anything that affects your schedule and I'll adjust it in real time.`}
   ]);
   const [input, setInput]     = useState('');
   const [loading, setLoading] = useState(false);
@@ -1054,7 +1054,7 @@ export default function App() {
   return (
     <div className="app">
       <nav className="topnav">
-        <div className="logo">BARBELL<span>BUDDY</span></div>
+        <div className="logo">COACH<span>NOVA</span></div>
         <div className="nav-right">
           <div className="imu-chip"><div className="pulse-dot"/>IMU L+R LIVE</div>
           <div style={{fontSize:11,color:'var(--muted)',fontWeight:800}}>200Hz · Sync 4ms</div>
