@@ -1150,7 +1150,7 @@ export default function App() {
     <div className="app">
       <nav className="topnav">
         <div className="logo" style={{display:'flex',alignItems:'center',gap:10}}>
-          <img src="/logo.png" alt="Coach Nova" style={{width:36,height:36,objectFit:'contain'}}/>
+          <img src="/logo.png" alt="Coach Nova" style={{width:80,height:80,objectFit:'contain'}}/>
           COACH<span>NOVA</span>
         </div>
         <div className="nav-right">
