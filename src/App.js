@@ -27,8 +27,6 @@ const DEFAULT_ATHLETE = {
   daysPerWeek: 4,
   injuryNotes: '',
   caloricTarget: 3200,
-  cycleDay: null,       // female: day 1-28 of menstrual cycle
-  cycleLengthDays: 28,
 };
 
 const FAKE_SESSION = {
@@ -44,21 +42,21 @@ const WORKOUT_TYPES = {
   strength:    { label:'STRENGTH FOCUS',  color:'var(--neon-purple)', bg:'rgba(185,77,255,0.1)',  border:'rgba(185,77,255,0.4)' },
   hypertrophy: { label:'HYPERTROPHY',     color:'var(--neon-blue)',   bg:'rgba(77,184,255,0.1)',  border:'rgba(77,184,255,0.4)' },
   endurance:   { label:'ENDURANCE',       color:'var(--neon-teal)',   bg:'rgba(0,229,255,0.1)',   border:'rgba(0,229,255,0.4)' },
-  pr:          { label:'HIT A NEW PR 🏆', color:'var(--neon-pink)',   bg:'rgba(255,45,155,0.1)',  border:'rgba(255,45,155,0.4)' },
+  pr:          { label:'HIT A NEW PR',    color:'var(--neon-pink)',   bg:'rgba(255,45,155,0.1)',  border:'rgba(255,45,155,0.4)' },
   buildup:     { label:'BUILD-UP',        color:'var(--neon-green)',  bg:'rgba(0,255,179,0.1)',   border:'rgba(0,255,179,0.4)'  },
   deload:      { label:'DELOAD',          color:'var(--neon-yellow)', bg:'rgba(255,215,0,0.1)',   border:'rgba(255,215,0,0.4)' },
   power:       { label:'POWER',           color:'var(--neon-pink)',   bg:'rgba(255,45,155,0.1)',  border:'rgba(255,45,155,0.4)' },
   recovery:    { label:'ACTIVE RECOVERY', color:'var(--neon-teal)',   bg:'rgba(0,229,255,0.08)',  border:'rgba(0,229,255,0.3)' },
+  recomp:      { label:'BODY RECOMP',     color:'var(--neon-orange)', bg:'rgba(255,107,53,0.08)', border:'rgba(255,107,53,0.3)' },
 };
 
 // ── CYCLE PHASE SCIENCE ──────────────────────
-// Based on evidence-based training research by Dr. Stacy Sims et al.
 const CYCLE_PHASES = {
-  menstrual:    { days:[1,5],   label:'Menstrual',    color:'var(--neon-pink)',   icon:'🌑', advice:'Lower intensity recommended. Focus on mobility and light upper body. Iron-rich nutrition priority.' },
-  follicular:   { days:[6,13],  label:'Follicular',   color:'var(--neon-green)',  icon:'🌒', advice:'Estrogen rising — strength & power training peaks here. Push PRs! High carb tolerance.' },
-  ovulatory:    { days:[14,16], label:'Ovulatory',    color:'var(--neon-yellow)', icon:'🌕', advice:'Peak strength window. Best time for 1RM attempts. High energy, high recovery capacity.' },
-  luteal_early: { days:[17,22], label:'Luteal (Early)',color:'var(--neon-orange)', icon:'🌖', advice:'Progesterone rising. Shift to hypertrophy volume. Higher protein needs. Slight fatigue normal.' },
-  luteal_late:  { days:[23,28], label:'Luteal (Late)', color:'var(--neon-purple)', icon:'🌘', advice:'PMS window. Reduce intensity. Prioritize rest days and recovery. Magnesium & B6 help symptoms.' },
+  menstrual:    { days:[1,5],   label:'Menstrual',    color:'var(--neon-pink)',   borderClass:'cal-border-menstrual',    advice:'Lower intensity recommended. Focus on mobility and light upper body. Iron-rich nutrition priority.' },
+  follicular:   { days:[6,13],  label:'Follicular',   color:'var(--neon-green)',  borderClass:'cal-border-follicular',   advice:'Estrogen rising — strength and power training peaks here. Push PRs! High carb tolerance.' },
+  ovulatory:    { days:[14,16], label:'Ovulatory',    color:'var(--neon-yellow)', borderClass:'cal-border-ovulatory',   advice:'Peak strength window. Best time for 1RM attempts. High energy, high recovery capacity.' },
+  luteal_early: { days:[17,22], label:'Luteal (Early)',color:'var(--neon-orange)', borderClass:'cal-border-luteal-early', advice:'Progesterone rising. Shift to hypertrophy volume. Higher protein needs. Slight fatigue normal.' },
+  luteal_late:  { days:[23,28], label:'Luteal (Late)', color:'var(--neon-purple)', borderClass:'cal-border-luteal-late',  advice:'PMS window. Reduce intensity. Prioritize rest days and recovery. Magnesium and B6 help symptoms.' },
 };
 
 function getCyclePhase(cycleDay) {
@@ -69,6 +67,46 @@ function getCyclePhase(cycleDay) {
   if (d >= 14 && d <= 16) return 'ovulatory';
   if (d >= 17 && d <= 22) return 'luteal_early';
   return 'luteal_late';
+}
+
+// Given an array of period start date strings, compute what cycle day today is
+function computeCycleDayFromLog(periodLog) {
+  if (!periodLog || periodLog.length === 0) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  // Find most recent period start on or before today
+  const sorted = [...periodLog]
+    .map(d => { const dt = new Date(d); dt.setHours(0,0,0,0); return dt; })
+    .filter(d => d <= today)
+    .sort((a,b) => b - a);
+  if (sorted.length === 0) return null;
+  const lastStart = sorted[0];
+  const diff = Math.floor((today - lastStart) / (1000*60*60*24));
+  return (diff % 28) + 1;
+}
+
+// Compute cycle day for a given calendar date from period log
+function computeCycleDayForDate(date, periodLog) {
+  if (!periodLog || periodLog.length === 0) return null;
+  const d = new Date(date); d.setHours(0,0,0,0);
+  const sorted = [...periodLog]
+    .map(s => { const dt = new Date(s); dt.setHours(0,0,0,0); return dt; })
+    .filter(dt => dt <= d)
+    .sort((a,b) => b - a);
+  if (sorted.length === 0) {
+    // If date is before first logged period, try projecting backward
+    const allSorted = [...periodLog]
+      .map(s => { const dt = new Date(s); dt.setHours(0,0,0,0); return dt; })
+      .sort((a,b) => a - b);
+    if (allSorted.length === 0) return null;
+    // project: first period - 28 day cycles backward
+    const first = allSorted[0];
+    const diff = Math.floor((first - d) / (1000*60*60*24));
+    if (diff > 60) return null; // too far back
+    return ((28 - (diff % 28)) % 28) + 1;
+  }
+  const lastStart = sorted[0];
+  const diff = Math.floor((d - lastStart) / (1000*60*60*24));
+  return (diff % 28) + 1;
 }
 
 // ── ACCESSORY EXERCISES BY EQUIPMENT ─────────
@@ -133,72 +171,88 @@ function getGoalConfig(goal) {
 }
 
 // ── BUILD SCHEDULE ────────────────────────────
-function buildSchedule(athlete) {
+// All goals now have varied day types (strength, hypertrophy, recomp, deload) — variety is essential
+// even for strength-focused athletes. periodLog is used for cycle phase if athlete is female.
+function buildSchedule(athlete, periodLog = []) {
   const today = new Date();
   today.setHours(0,0,0,0);
   const goal = getGoalConfig(athlete.goal);
   const isFemale = athlete.gender === 'female';
-  const cycleDay = athlete.cycleDay;
-
-  // Base lift patterns keyed by goal
-  const getLiftName = (base, sets, pct, rm) => {
-    const weight = Math.round(rm * pct / 5) * 5;
-    return `${base} ${sets} @ ${weight}lbs`;
-  };
 
   const sqW  = Math.round(athlete.squat1RM    * goal.mainPct / 5) * 5;
   const bnW  = Math.round(athlete.bench1RM    * goal.mainPct / 5) * 5;
   const dlW  = Math.round(athlete.deadlift1RM * (goal.mainPct + 0.05) / 5) * 5;
   const ohpW = Math.round(athlete.ohp1RM      * (goal.mainPct - 0.05) / 5) * 5;
 
-  // Pattern: 14 days, varies by goal
+  // All programs mix strength, hypertrophy, recomp, and deload/recovery days.
+  // The ratio shifts by goal, but variety always exists.
   let liftPattern;
+
   if (athlete.goal === 'strength' || athlete.goal === 'powerlifting') {
+    // Strength primary, but ~30% hypertrophy/recomp, one deload per 2 weeks
     liftPattern = [
       { lift:`Squat ${goal.mainSets}`,    type:'strength',    cal:'+350', rest:false, baseKey:'squat'    },
       { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
       { lift:`Bench ${goal.mainSets}`,    type:'strength',    cal:'+350', rest:false, baseKey:'bench'    },
-      { lift:`Squat ${goal.mainSets}+`,   type:'pr',          cal:'+350', rest:false, baseKey:'squat'    },
+      { lift:`Squat (Hypertrophy) 4x8`,  type:'hypertrophy', cal:'+350', rest:false, baseKey:'squat'    },
       { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
       { lift:`Deadlift ${goal.mainSets}`, type:'strength',    cal:'+400', rest:false, baseKey:'deadlift' },
       { lift:null,                         type:null,          cal:'+150', rest:true,  baseKey:null       },
       { lift:`OHP ${goal.mainSets}`,      type:'strength',    cal:'+350', rest:false, baseKey:'ohp'      },
-      { lift:`Bench ${goal.mainSets}+`,   type:'buildup',     cal:'+350', rest:false, baseKey:'bench'    },
+      { lift:`Bench (Hypertrophy) 4x10`, type:'hypertrophy', cal:'+350', rest:false, baseKey:'bench'    },
       { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
-      { lift:`Squat ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'squat'    },
-      { lift:`Deadlift ${goal.mainSets}`, type:'strength',    cal:'+400', rest:false, baseKey:'deadlift' },
+      { lift:`Squat (PR Attempt)`,        type:'pr',          cal:'+350', rest:false, baseKey:'squat'    },
+      { lift:`Upper Body Recomp 3x15`,   type:'recomp',      cal:'+250', rest:false, baseKey:'upper'    },
       { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
       { lift:`Deload Squat`,              type:'deload',      cal:'+150', rest:false, baseKey:'squat'    },
     ];
-  } else if (athlete.goal === 'hypertrophy' || athlete.goal === 'recomp') {
+  } else if (athlete.goal === 'hypertrophy') {
+    // Hypertrophy primary, ~20% strength days to keep neural drive, deload end of cycle
     liftPattern = [
       { lift:`Squat ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'squat'    },
       { lift:`Bench ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'bench'    },
       { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
-      { lift:`Deadlift ${goal.mainSets}`, type:'hypertrophy', cal:'+350', rest:false, baseKey:'deadlift' },
+      { lift:`Deadlift (Strength) 5x5`,  type:'strength',    cal:'+350', rest:false, baseKey:'deadlift' },
       { lift:`OHP ${goal.mainSets}`,      type:'hypertrophy', cal:'+350', rest:false, baseKey:'ohp'      },
       { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
-      { lift:`Squat ${goal.mainSets}+`,   type:'pr',          cal:'+350', rest:false, baseKey:'squat'    },
+      { lift:`Squat (PR Attempt)`,        type:'pr',          cal:'+350', rest:false, baseKey:'squat'    },
       { lift:null,                         type:null,          cal:'+150', rest:true,  baseKey:null       },
-      { lift:`Bench ${goal.mainSets}+`,   type:'buildup',     cal:'+350', rest:false, baseKey:'bench'    },
+      { lift:`Bench ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'bench'    },
+      { lift:`Lower Body Recomp 3x15`,   type:'recomp',      cal:'+250', rest:false, baseKey:'lower'    },
+      { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
       { lift:`Deadlift ${goal.mainSets}`, type:'hypertrophy', cal:'+350', rest:false, baseKey:'deadlift' },
+      { lift:`OHP (Strength) 5x5`,       type:'strength',    cal:'+350', rest:false, baseKey:'ohp'      },
       { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
-      { lift:`OHP ${goal.mainSets}`,      type:'hypertrophy', cal:'+350', rest:false, baseKey:'ohp'      },
-      { lift:`Squat ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'squat'    },
-      { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
+    ];
+  } else if (athlete.goal === 'recomp') {
+    liftPattern = [
+      { lift:`Squat ${goal.mainSets}`,    type:'recomp',      cal:'+150', rest:false, baseKey:'squat'    },
+      { lift:`Bench ${goal.mainSets}`,    type:'recomp',      cal:'+150', rest:false, baseKey:'bench'    },
+      { lift:null,                         type:null,          cal:'+50',  rest:true,  baseKey:null       },
+      { lift:`Deadlift (Strength) 5x5`,  type:'strength',    cal:'+200', rest:false, baseKey:'deadlift' },
+      { lift:`OHP ${goal.mainSets}`,      type:'recomp',      cal:'+150', rest:false, baseKey:'ohp'      },
+      { lift:null,                         type:null,          cal:'+50',  rest:true,  baseKey:null       },
+      { lift:`Full Body Hypertrophy 4x12`,type:'hypertrophy', cal:'+150', rest:false, baseKey:'upper'    },
+      { lift:null,                         type:null,          cal:'+50',  rest:true,  baseKey:null       },
+      { lift:`Squat ${goal.mainSets}`,    type:'recomp',      cal:'+150', rest:false, baseKey:'squat'    },
+      { lift:`Bench (Strength) 5x5`,     type:'strength',    cal:'+200', rest:false, baseKey:'bench'    },
+      { lift:null,                         type:null,          cal:'+50',  rest:true,  baseKey:null       },
+      { lift:`Lower Body Hyper 4x12`,    type:'hypertrophy', cal:'+150', rest:false, baseKey:'lower'    },
+      { lift:`Active Recovery`,          type:'recovery',    cal:'+50',  rest:false, baseKey:'upper'    },
+      { lift:null,                         type:null,          cal:'+50',  rest:true,  baseKey:null       },
     ];
   } else if (athlete.goal === 'endurance') {
     liftPattern = [
       { lift:`Squat ${goal.mainSets}`,    type:'endurance',   cal:'+250', rest:false, baseKey:'squat'    },
       { lift:`Bench ${goal.mainSets}`,    type:'endurance',   cal:'+250', rest:false, baseKey:'bench'    },
       { lift:null,                         type:null,          cal:'+150', rest:true,  baseKey:null       },
-      { lift:`Deadlift ${goal.mainSets}`, type:'endurance',   cal:'+250', rest:false, baseKey:'deadlift' },
+      { lift:`Deadlift (Strength) 5x5`,  type:'strength',    cal:'+300', rest:false, baseKey:'deadlift' },
       { lift:`OHP ${goal.mainSets}`,      type:'endurance',   cal:'+250', rest:false, baseKey:'ohp'      },
       { lift:null,                         type:null,          cal:'+150', rest:true,  baseKey:null       },
-      { lift:`Full Body Circuit`,         type:'endurance',   cal:'+250', rest:false, baseKey:'upper'    },
+      { lift:`Full Body Hyper 4x10`,     type:'hypertrophy', cal:'+250', rest:false, baseKey:'upper'    },
       { lift:null,                         type:null,          cal:'+100', rest:true,  baseKey:null       },
       { lift:`Squat ${goal.mainSets}`,    type:'endurance',   cal:'+250', rest:false, baseKey:'squat'    },
-      { lift:`Bench ${goal.mainSets}`,    type:'endurance',   cal:'+250', rest:false, baseKey:'bench'    },
+      { lift:`Bench (Strength) 5x5`,     type:'strength',    cal:'+300', rest:false, baseKey:'bench'    },
       { lift:null,                         type:null,          cal:'+150', rest:true,  baseKey:null       },
       { lift:`Deadlift ${goal.mainSets}`, type:'endurance',   cal:'+250', rest:false, baseKey:'deadlift' },
       { lift:null,                         type:null,          cal:'+150', rest:true,  baseKey:null       },
@@ -210,17 +264,17 @@ function buildSchedule(athlete) {
       { lift:`Squat ${goal.mainSets}`,    type:'strength',    cal:'+350', rest:false, baseKey:'squat'    },
       { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
       { lift:`Bench ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'bench'    },
-      { lift:`Squat ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'squat'    },
+      { lift:`Squat (Hypertrophy) 4x10`, type:'hypertrophy', cal:'+350', rest:false, baseKey:'squat'    },
       { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
       { lift:`Deadlift ${goal.mainSets}`, type:'strength',    cal:'+400', rest:false, baseKey:'deadlift' },
       { lift:null,                         type:null,          cal:'+150', rest:true,  baseKey:null       },
-      { lift:`Squat ${goal.mainSets}+`,   type:'pr',          cal:'+350', rest:false, baseKey:'squat'    },
+      { lift:`Squat (PR Attempt)`,        type:'pr',          cal:'+350', rest:false, baseKey:'squat'    },
       { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
-      { lift:`Bench ${goal.mainSets}+`,   type:'buildup',     cal:'+350', rest:false, baseKey:'bench'    },
-      { lift:`Squat ${goal.mainSets}`,    type:'hypertrophy', cal:'+350', rest:false, baseKey:'squat'    },
+      { lift:`Bench (Recomp) 3x15`,      type:'recomp',      cal:'+250', rest:false, baseKey:'bench'    },
+      { lift:`Squat (Hypertrophy) 4x10`, type:'hypertrophy', cal:'+350', rest:false, baseKey:'squat'    },
       { lift:null,                         type:null,          cal:'+200', rest:true,  baseKey:null       },
-      { lift:`OHP ${goal.mainSets}`,      type:'hypertrophy', cal:'+350', rest:false, baseKey:'ohp'      },
-      { lift:`Deload Squat`,              type:'deload',      cal:'+150', rest:false, baseKey:'squat'    },
+      { lift:`OHP ${goal.mainSets}`,      type:'strength',    cal:'+350', rest:false, baseKey:'ohp'      },
+      { lift:`Deload`,                    type:'deload',      cal:'+150', rest:false, baseKey:'squat'    },
     ];
   }
 
@@ -232,14 +286,16 @@ function buildSchedule(athlete) {
     date.setDate(today.getDate() + i);
     const pattern = liftPattern[i % liftPattern.length];
 
-    // Compute cycle data for this day
+    // Compute cycle data for this day from periodLog
     let thisCycleDay = null;
     let cyclePhaseKey = null;
     let cyclePhaseInfo = null;
-    if (isFemale && cycleDay) {
-      thisCycleDay = ((cycleDay - 1 + i) % athlete.cycleLengthDays) + 1;
-      cyclePhaseKey = getCyclePhase(thisCycleDay);
-      cyclePhaseInfo = CYCLE_PHASES[cyclePhaseKey];
+    if (isFemale && periodLog.length > 0) {
+      thisCycleDay = computeCycleDayForDate(date, periodLog);
+      if (thisCycleDay) {
+        cyclePhaseKey = getCyclePhase(thisCycleDay);
+        cyclePhaseInfo = CYCLE_PHASES[cyclePhaseKey];
+      }
     }
 
     // Cycle-based lift overrides for females
@@ -251,7 +307,6 @@ function buildSchedule(athlete) {
 
     if (isFemale && cyclePhaseKey && !rest) {
       if (cyclePhaseKey === 'menstrual') {
-        // Day 1-5: no heavy leg work, prefer upper or mobility
         if (lift && /squat|deadlift/i.test(lift)) {
           lift = 'Upper Body (light)';
           type = 'recovery';
@@ -259,14 +314,12 @@ function buildSchedule(athlete) {
           cycleNote = 'Swapped to light upper — menstrual phase. Low intensity recommended.';
         }
       } else if (cyclePhaseKey === 'follicular' || cyclePhaseKey === 'ovulatory') {
-        // Peak window — push PRs, add power type
         if (type === 'hypertrophy') type = 'strength';
-        if (cyclePhaseKey === 'ovulatory' && lift && !lift.includes('+')) lift = lift + ' (PR window 🏆)';
+        if (cyclePhaseKey === 'ovulatory' && lift && !lift.includes('PR')) lift = lift + ' (PR window)';
         cycleNote = cyclePhaseKey === 'ovulatory'
           ? 'Ovulatory peak — best time for 1RM attempts. Estrogen + LH surge = max power.'
           : 'Follicular phase — high estrogen = great strength gains. Push intensity.';
       } else if (cyclePhaseKey === 'luteal_late') {
-        // PMS window — reduce intensity, more rest
         if (!rest) {
           type = 'recovery';
           cycleNote = 'Late luteal phase — reduce load by 10-15%. Higher fatigue is normal, not weakness.';
@@ -274,12 +327,10 @@ function buildSchedule(athlete) {
       }
     }
 
-    // Accessories
     const accessories = (!rest && pattern.baseKey)
       ? getAccessoriesForLift(pattern.baseKey, athlete.equipment).map(a => ({ ...a, done: false }))
       : [];
 
-    // Reason text
     let reason = '';
     if (rest) {
       reason = 'CNS recovery day. Protein stays high, light movement only.';
@@ -287,10 +338,10 @@ function buildSchedule(athlete) {
       reason = cycleNote;
     } else {
       const gc = getGoalConfig(athlete.goal);
-      reason = `${athlete.goal.charAt(0).toUpperCase() + athlete.goal.slice(1)} goal — ${gc.note}. Phase week ${athlete.phaseWeek}/${athlete.phaseTotalWeeks}.`;
+      const typeLabel = type ? (WORKOUT_TYPES[type]?.label || type) : 'General';
+      reason = `${typeLabel} day — ${gc.note}. Phase week ${athlete.phaseWeek}/${athlete.phaseTotalWeeks}. Variety in day types maximizes long-term adaptation.`;
     }
 
-    // Nutrition note
     let nutr = '';
     if (rest) {
       nutr = 'Recovery day. Keep protein at 1g/lb bodyweight. Hydration priority.';
@@ -435,26 +486,9 @@ function ProfileScreen({ athlete, onSave }) {
             <InputRow label="HEIGHT (IN)"><input style={inputStyle} type="number" min="0" max="11" value={form.heightIn} onChange={e=>set('heightIn',parseInt(e.target.value)||0)}/></InputRow>
             <InputRow label="WEIGHT (LBS)"><input style={inputStyle} type="number" min="80" max="500" value={form.bodyweight} onChange={e=>set('bodyweight',parseInt(e.target.value)||0)}/></InputRow>
           </div>
-          {/* Cycle tracking for females */}
           {form.gender === 'female' && (
-            <div style={{marginTop:8,padding:'12px',background:'rgba(255,45,155,0.06)',borderRadius:10,border:'1px solid rgba(255,45,155,0.2)'}}>
-              <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-pink)',fontWeight:800,marginBottom:8}}>🩸 CYCLE TRACKING</div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 12px'}}>
-                <InputRow label="CURRENT CYCLE DAY (1-28)">
-                  <input style={inputStyle} type="number" min="1" max="35" placeholder="e.g. 1 = period start"
-                    value={form.cycleDay||''} onChange={e=>set('cycleDay',parseInt(e.target.value)||null)}/>
-                </InputRow>
-                <InputRow label="CYCLE LENGTH (DAYS)">
-                  <input style={inputStyle} type="number" min="21" max="35" value={form.cycleLengthDays||28}
-                    onChange={e=>set('cycleLengthDays',parseInt(e.target.value)||28)}/>
-                </InputRow>
-              </div>
-              {form.cycleDay && (
-                <div style={{fontSize:11,fontWeight:700,color:'var(--neon-pink)',marginTop:4}}>
-                  {CYCLE_PHASES[getCyclePhase(form.cycleDay)]?.icon} Currently in {CYCLE_PHASES[getCyclePhase(form.cycleDay)]?.label} phase
-                  · {CYCLE_PHASES[getCyclePhase(form.cycleDay)]?.advice}
-                </div>
-              )}
+            <div style={{fontSize:11,color:'var(--neon-pink)',fontWeight:700,padding:'10px 12px',background:'rgba(255,45,155,0.06)',borderRadius:8,border:'1px solid rgba(255,45,155,0.2)'}}>
+              Track your cycle in the Nutrition tab for personalized training adjustments.
             </div>
           )}
         </div>
@@ -492,6 +526,7 @@ function ProfileScreen({ athlete, onSave }) {
             <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-purple)',fontWeight:800,marginBottom:4}}>GOAL PREVIEW</div>
             <div style={{fontSize:11,color:'var(--text)',fontWeight:700}}>{getGoalConfig(form.goal).note}</div>
             <div style={{fontSize:10,color:'var(--muted)',marginTop:2,fontWeight:700}}>Main lifts: {getGoalConfig(form.goal).mainSets} · Accessories: {getGoalConfig(form.goal).accSets} · Rest days/week: {getGoalConfig(form.goal).restDays}</div>
+            <div style={{fontSize:10,color:'var(--neon-teal)',marginTop:4,fontWeight:700}}>All programs include strength, hypertrophy, recomp + deload days for optimal adaptation.</div>
           </div>
         </div>
       </div>
@@ -530,11 +565,11 @@ function StartLift({ onStart, presetLift, athlete }) {
   const [reps, setReps]     = useState(5);
   const pick = (i) => { setSel(i); setWeight(Math.round(lifts[i].rm * lifts[i].pct / 5) * 5); };
   const pct1RM = Math.round((weight / lifts[sel].rm) * 100);
-  const zone = pct1RM < 70 ? '⚡ Warm-up / Technique' : pct1RM < 80 ? '💪 Hypertrophy zone (70–80%)' : pct1RM < 90 ? '🏋️ Strength zone (80–90%)' : '🔥 Max effort zone (90%+)';
+  const zone = pct1RM < 70 ? 'Warm-up / Technique' : pct1RM < 80 ? 'Hypertrophy zone (70-80%)' : pct1RM < 90 ? 'Strength zone (80-90%)' : 'Max effort zone (90%+)';
   return (
     <div className="screen">
       <div className="page-title gradient-blue">START LIFT</div>
-      <div className="page-sub">{presetLift ? `📅 Pre-filled from calendar: ${presetLift}` : 'Choose your exercise · Weight auto-sets to working %'}</div>
+      <div className="page-sub">{presetLift ? `Pre-filled from calendar: ${presetLift}` : 'Choose your exercise · Weight auto-sets to working %'}</div>
       <div className="lift-grid">
         {lifts.map((l,i) => (
           <div key={i} className={`lift-btn ${sel===i?`sel-${l.color}`:''}`} onClick={() => pick(i)}>
@@ -547,8 +582,8 @@ function StartLift({ onStart, presetLift, athlete }) {
       <div className="gcard gc-blue">
         <div className="panel-header"><span className="panel-title">SET WEIGHT</span><span className="badge badge-blue">{pct1RM}% of 1RM</span></div>
         <div className="weight-row">
-          <button className="wb wm" onClick={() => setWeight(w => Math.max(45,w-10))}>−10</button>
-          <button className="wb wm" onClick={() => setWeight(w => Math.max(45,w-5))}>−5</button>
+          <button className="wb wm" onClick={() => setWeight(w => Math.max(45,w-10))}>-10</button>
+          <button className="wb wm" onClick={() => setWeight(w => Math.max(45,w-5))}>-5</button>
           <div className="weight-display">{weight}</div>
           <button className="wb wp" onClick={() => setWeight(w => w+5)}>+5</button>
           <button className="wb wp" onClick={() => setWeight(w => w+10)}>+10</button>
@@ -617,34 +652,34 @@ function LiveSession({ session, athlete }) {
   return (
     <div className="screen">
       <div className="page-title gradient-teal">LIVE SESSION</div>
-      <div className="page-sub">{s.lift} · Set {setNum} of {s.sets} · {s.weight} lbs ({Math.round((s.weight/s.rm)*100)}% 1RM) · ⏱ {sessionMins}:{sessionSecs}</div>
+      <div className="page-sub">{s.lift} · Set {setNum} of {s.sets} · {s.weight} lbs ({Math.round((s.weight/s.rm)*100)}% 1RM) · {sessionMins}:{sessionSecs}</div>
       {phase === 'resting' && (
         <div className="rest-banner">
-          <div className="rest-icon">⏸</div>
+          <div className="rest-icon">||</div>
           <div style={{flex:1}}>
             <div className="rest-title">REST PERIOD · Set {setNum} complete</div>
             <div className="rest-countdown">{restMins}:{restSecs}</div>
             <div className="rest-bar-wrap"><div className="rest-bar-fill" style={{width:`${restPct}%`}}/></div>
             <div className="rest-sub">Next: Set {setNum+1} of {s.sets} · {REST_SECONDS}s programmed rest</div>
           </div>
-          <button className="rest-skip" onClick={()=>{setSetNum(n=>n+1);setRepCount(0);setPhase('lifting');}}>Skip Rest ▶</button>
+          <button className="rest-skip" onClick={()=>{setSetNum(n=>n+1);setRepCount(0);setPhase('lifting');}}>Skip Rest</button>
         </div>
       )}
       {done && (
         <div className="rest-banner" style={{background:'rgba(0,255,179,0.07)',borderColor:'rgba(0,255,179,0.3)'}}>
-          <div className="rest-icon">🏆</div>
+          <div className="rest-icon">+</div>
           <div><div className="rest-title" style={{color:'var(--neon-green)'}}>SESSION COMPLETE!</div><div style={{fontSize:12,color:'var(--muted)',fontWeight:700}}>All {s.sets} sets done · Head to Post-Session for your debrief</div></div>
         </div>
       )}
       <div className="stat-row">
-        <div className="sc sc-blue"><div className="sl">Reps</div><div className="sv">{repCount}<span className="su">/{s.reps}</span></div><div className="sd neu">{phase==='resting'?'Set done ✓':`${Math.round((repCount/s.reps)*100)}% of set`}</div></div>
-        <div className="sc sc-orange"><div className="sl">Bar Velocity</div><div className="sv">{currentVel}<span className="su">m/s</span></div><div className="sd" style={{color:velDropoff>20?'var(--neon-orange)':'var(--neon-green)'}}>{velDropoff>0?`▼ ${velDropoff}% from rep 1`:'Baseline'}</div></div>
-        <div className="sc sc-yellow"><div className="sl">Bar Tilt</div><div className="sv">{tiltDeg}<span className="su">°L</span></div><div className="sd" style={{color:parseFloat(tiltDeg)>2.5?'var(--neon-orange)':'var(--neon-green)'}}>{parseFloat(tiltDeg)>2.5?'Form flag':'Acceptable'}</div></div>
+        <div className="sc sc-blue"><div className="sl">Reps</div><div className="sv">{repCount}<span className="su">/{s.reps}</span></div><div className="sd neu">{phase==='resting'?'Set done':''+Math.round((repCount/s.reps)*100)+'% of set'}</div></div>
+        <div className="sc sc-orange"><div className="sl">Bar Velocity</div><div className="sv">{currentVel}<span className="su">m/s</span></div><div className="sd" style={{color:velDropoff>20?'var(--neon-orange)':'var(--neon-green)'}}>{velDropoff>0?`-${velDropoff}% from rep 1`:'Baseline'}</div></div>
+        <div className="sc sc-yellow"><div className="sl">Bar Tilt</div><div className="sv">{tiltDeg}<span className="su">L</span></div><div className="sd" style={{color:parseFloat(tiltDeg)>2.5?'var(--neon-orange)':'var(--neon-green)'}}>{parseFloat(tiltDeg)>2.5?'Form flag':'Acceptable'}</div></div>
         <div className="sc sc-purple"><div className="sl">Session Time</div><div className="sv">{sessionMins}:{sessionSecs}</div><div className="sd neu">Total elapsed</div></div>
       </div>
       <div className="gcard gc-blue" style={{textAlign:'center',marginBottom:14}}>
         <div className="rep-counter">
-          <div className={`rep-num ${phase==='resting'?'gradient-green':'gradient-teal'}`}>{phase==='resting'?'✓':repCount}</div>
+          <div className={`rep-num ${phase==='resting'?'gradient-green':'gradient-teal'}`}>{phase==='resting'?'+':repCount}</div>
           <div className="rep-label">{phase==='resting'?'SET COMPLETE — RESTING':'REPS COUNTED BY IMU SENSOR'}</div>
         </div>
         <div className="set-dots">{Array.from({length:s.sets}).map((_,i)=><div key={i} className={`sdot ${i===setNum-1&&phase==='lifting'?'sdot-cur':i<setNum-1||(i===setNum-1&&phase==='resting')?'sdot-done':''}`}/>)}</div>
@@ -658,11 +693,11 @@ function LiveSession({ session, athlete }) {
         </div>
         <div className="gcard gc-orange">
           <div className="panel-header"><span className="panel-title">BAR BALANCE</span><span className="badge badge-orange">IMU · LIVE</span></div>
-          <div style={{textAlign:'center',fontSize:10,color:'var(--muted)',marginBottom:6,fontWeight:800}}>LEFT ←——————→ RIGHT</div>
+          <div style={{textAlign:'center',fontSize:10,color:'var(--muted)',marginBottom:6,fontWeight:800}}>LEFT  ------  RIGHT</div>
           <div className="tilt-track"><div className="tilt-center"/><div className="tilt-fill" style={{width:Math.round(parseFloat(tiltDeg)*8),left:`calc(50% - ${Math.round(parseFloat(tiltDeg)*8)+4}px)`}}/></div>
-          <div style={{textAlign:'center',fontFamily:'Bebas Neue',fontSize:22,color:parseFloat(tiltDeg)>2.5?'var(--neon-orange)':'var(--neon-green)',letterSpacing:2,margin:'8px 0'}}>{tiltDeg}° {parseFloat(tiltDeg)>2.5?'LEFT ⚠️':'LEFT ✓'}</div>
-          <div className="metric-row"><span className="mn">Left sensor</span><span className="mv" style={{color:'var(--neon-green)'}}>✓ Active</span></div>
-          <div className="metric-row"><span className="mn">Right sensor</span><span className="mv" style={{color:'var(--neon-green)'}}>✓ Active</span></div>
+          <div style={{textAlign:'center',fontFamily:'Bebas Neue',fontSize:22,color:parseFloat(tiltDeg)>2.5?'var(--neon-orange)':'var(--neon-green)',letterSpacing:2,margin:'8px 0'}}>{tiltDeg} {parseFloat(tiltDeg)>2.5?'LEFT FLAG':'LEFT OK'}</div>
+          <div className="metric-row"><span className="mn">Left sensor</span><span className="mv" style={{color:'var(--neon-green)'}}>Active</span></div>
+          <div className="metric-row"><span className="mn">Right sensor</span><span className="mv" style={{color:'var(--neon-green)'}}>Active</span></div>
         </div>
         <div className="gcard gc-purple panel-full">
           <div className="panel-header"><span className="panel-title">AI COACH</span><span className="badge badge-purple">Live</span></div>
@@ -695,10 +730,10 @@ function PostSession({ athlete }) {
       <div className="page-title gradient-green">POST-SESSION</div>
       <div className="page-sub">{s.lift} · 5x5 @ {s.weight} lbs · {Math.round((s.weight/athlete.squat1RM)*100)}% 1RM</div>
       <div className="stat-row">
-        <div className="sc sc-green"><div className="sl">Total Volume</div><div className="sv">{(s.weight*s.repsPerSet*s.setsCompleted).toLocaleString()}<span className="su">lbs</span></div><div className="sd up">▲ +{s.weight*s.repsPerSet} vs last</div></div>
-        <div className="sc sc-blue"><div className="sl">Avg Velocity</div><div className="sv">{s.avgVelocity}<span className="su">m/s</span></div><div className="sd up">▲ +0.03 vs last</div></div>
+        <div className="sc sc-green"><div className="sl">Total Volume</div><div className="sv">{(s.weight*s.repsPerSet*s.setsCompleted).toLocaleString()}<span className="su">lbs</span></div><div className="sd up">+{s.weight*s.repsPerSet} vs last</div></div>
+        <div className="sc sc-blue"><div className="sl">Avg Velocity</div><div className="sv">{s.avgVelocity}<span className="su">m/s</span></div><div className="sd up">+0.03 vs last</div></div>
         <div className="sc sc-yellow"><div className="sl">Vel Dropoff</div><div className="sv">{s.velocityDropoff}<span className="su">%</span></div><div className="sd" style={{color:s.velocityDropoff>20?'var(--neon-orange)':'var(--neon-green)'}}>{s.velocityDropoff>20?'Fatigue detected':'Within range'}</div></div>
-        <div className="sc sc-orange"><div className="sl">Avg Tilt</div><div className="sv">{s.avgTilt}<span className="su">°L</span></div><div className="sd dn">Persistent</div></div>
+        <div className="sc sc-orange"><div className="sl">Avg Tilt</div><div className="sv">{s.avgTilt}<span className="su">L</span></div><div className="sd dn">Persistent</div></div>
       </div>
       <div className="gcard gc-blue" style={{marginBottom:14}}>
         <div className="panel-header"><span className="panel-title">VELOCITY PER REP</span><span className="badge badge-blue">Set 1 of 5</span></div>
@@ -714,7 +749,7 @@ function PostSession({ athlete }) {
       <div className="gcard gc-green">
         <div className="panel-header">
           <span className="panel-title">AI DEBRIEF</span>
-          <div style={{display:'flex',gap:8,alignItems:'center'}}><span className="badge badge-green">AI</span><button className="refresh-btn" onClick={fetchDebrief} disabled={loading}>↺ Refresh</button></div>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}><span className="badge badge-green">AI</span><button className="refresh-btn" onClick={fetchDebrief} disabled={loading}>Refresh</button></div>
         </div>
         {loading ? <AICard dot="blue" text="" loading={true}/> : aiLines.map((line,i)=><AICard key={i} dot={i===0?'green':i===1?'orange':'blue'} text={line} meta={i===0?'Performance':i===1?'Form analysis':'Next session'}/>)}
       </div>
@@ -723,16 +758,15 @@ function PostSession({ athlete }) {
 }
 
 // ─────────────────────────────────────────────
-// CALENDAR SCREEN — FULL REBUILD
+// CALENDAR SCREEN
 // ─────────────────────────────────────────────
-function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete }) {
+function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, periodLog, onMarkPeriod }) {
   const [phase, setPhase]       = useState(athlete.phase);
   const [blocked, setBlocked]   = useState(new Set());
   const [modalDay, setModalDay] = useState(null);
   const [notif, setNotif]       = useState(null);
   const [aiLines, setAiLines]   = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
-  // accessory completion state: { dateKey: { accessoryIndex: bool } }
   const [accDone, setAccDone]   = useState({});
 
   const today = new Date(); today.setHours(0,0,0,0);
@@ -776,20 +810,19 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
     }));
   };
 
-  const getDayBg = d => {
-    if (d.rest) return 'cal-rest-bg';
-    if (d.cyclePhaseKey === 'ovulatory') return 'cal-ovulatory-bg';
-    if (d.cyclePhaseKey === 'follicular') return 'cal-follicular-bg';
-    if (d.cyclePhaseKey === 'menstrual') return 'cal-menstrual-bg';
-    if (d.cyclePhaseKey === 'luteal_late') return 'cal-luteal-bg';
-    return phase==='bulk'?'cal-bulk-bg':phase==='cut'?'cal-cut-bg':'cal-maintain-bg';
+  // Determine border class for a calendar day
+  const getDayBorderClass = (d) => {
+    if (isFemale && d.cyclePhaseKey) {
+      return CYCLE_PHASES[d.cyclePhaseKey]?.borderClass || '';
+    }
+    if (d.rest) return 'cal-border-rest';
+    return phase === 'bulk' ? 'cal-border-bulk' : phase === 'cut' ? 'cal-border-cut' : 'cal-border-maintain';
   };
 
   const phaseCalLabel = phase==='cut'?'pill-cut-cal':'pill-bulk-cal';
   const firstDayOfWeek = schedule[0]?.weekday ?? 0;
-
-  // Goal config label
   const gc = getGoalConfig(athlete.goal);
+  const todayCycleDay = isFemale ? computeCycleDayFromLog(periodLog) : null;
 
   return (
     <div className="screen">
@@ -803,26 +836,31 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
           <div><div style={{fontSize:8,letterSpacing:2,color:'var(--muted)',fontWeight:800}}>PROGRAM</div><div style={{fontFamily:'Bebas Neue',fontSize:16,color:'var(--neon-blue)',letterSpacing:1}}>{gc.mainSets}</div></div>
           <div><div style={{fontSize:8,letterSpacing:2,color:'var(--muted)',fontWeight:800}}>EQUIPMENT</div><div style={{fontFamily:'Bebas Neue',fontSize:16,color:'var(--neon-teal)',letterSpacing:1}}>{athlete.equipment.toUpperCase()}</div></div>
           <div><div style={{fontSize:8,letterSpacing:2,color:'var(--muted)',fontWeight:800}}>PHASE</div><div style={{fontFamily:'Bebas Neue',fontSize:16,color:'var(--neon-green)',letterSpacing:1}}>WK {athlete.phaseWeek}/{athlete.phaseTotalWeeks}</div></div>
-          {isFemale && athlete.cycleDay && (
+          {isFemale && todayCycleDay && (
             <div style={{marginLeft:'auto'}}>
               <div style={{fontSize:8,letterSpacing:2,color:'var(--neon-pink)',fontWeight:800}}>CYCLE PHASE</div>
               <div style={{fontFamily:'Bebas Neue',fontSize:14,color:'var(--neon-pink)',letterSpacing:1}}>
-                {CYCLE_PHASES[getCyclePhase(athlete.cycleDay)]?.icon} {CYCLE_PHASES[getCyclePhase(athlete.cycleDay)]?.label}
+                {CYCLE_PHASES[getCyclePhase(todayCycleDay)]?.label} · Day {todayCycleDay}
               </div>
             </div>
           )}
+          {isFemale && !todayCycleDay && (
+            <div style={{marginLeft:'auto',fontSize:11,color:'var(--neon-pink)',fontWeight:700}}>
+              Track period in Nutrition tab for cycle-adjusted training
+            </div>
+          )}
         </div>
-        {isFemale && athlete.cycleDay && (
+        {isFemale && todayCycleDay && (
           <div style={{marginTop:8,fontSize:11,color:'var(--neon-pink)',fontWeight:700,borderTop:'1px solid rgba(255,45,155,0.15)',paddingTop:8}}>
-            {CYCLE_PHASES[getCyclePhase(athlete.cycleDay)]?.advice}
+            {CYCLE_PHASES[getCyclePhase(todayCycleDay)]?.advice}
           </div>
         )}
       </div>
 
       {/* Phase toggle */}
       <div className="phase-toggle">
-        <span style={{fontSize:11,fontWeight:800,color:'var(--muted)'}}>CYCLE:</span>
-        {[['bulk','ptog-bulk','🟢 BULKING'],['cut','ptog-cut','🔶 CUTTING'],['maintain','ptog-maintain','🔵 MAINTAIN']].map(([p,cls,lbl])=>(
+        <span style={{fontSize:11,fontWeight:800,color:'var(--muted)'}}>TRAINING CYCLE:</span>
+        {[['bulk','ptog-bulk','BULKING'],['cut','ptog-cut','CUTTING'],['maintain','ptog-maintain','MAINTAIN']].map(([p,cls,lbl])=>(
           <button key={p} className={`ptog ${cls} ${phase===p?'ptog-active':''}`}
             onClick={()=>{setPhase(p);showNotif(`Switched to ${p} — AI updating...`);fetchCalAI(p,blocked);}}>
             {lbl}
@@ -830,11 +868,11 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
         ))}
       </div>
 
-      {notif&&<div className="notification"><div className="notif-icon">🤖</div><div><div className="notif-text">{notif}</div><div className="notif-sub">Calendar updated · tap any day to review</div></div></div>}
+      {notif&&<div className="notification"><div className="notif-icon">+</div><div><div className="notif-text">{notif}</div><div className="notif-sub">Calendar updated · tap any day to review</div></div></div>}
       {schedule.some(d=>d._coachRebuilt)&&(
         <div className="notification" style={{background:'rgba(255,45,155,0.06)',borderColor:'rgba(255,45,155,0.25)'}}>
-          <div className="notif-icon">🤖</div>
-          <div><div className="notif-text" style={{color:'var(--neon-pink)'}}>AI Coach rebuilt your full schedule</div><div className="notif-sub">Pink days were changed · tap any day to see reasoning</div></div>
+          <div className="notif-icon">+</div>
+          <div><div className="notif-text" style={{color:'var(--neon-pink)'}}>AI Coach rebuilt your full schedule</div><div className="notif-sub">Adjusted days are marked · tap any day to see reasoning</div></div>
         </div>
       )}
 
@@ -856,20 +894,24 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
 
       {/* Legend */}
       <div className="legend-row">
+        <span style={{fontSize:10,fontWeight:800,color:'var(--muted)'}}>BORDERS:</span>
         {[
-          ['rgba(185,77,255,0.5)','Lift'],
-          ['rgba(0,255,179,0.5)','Bulk'],
-          ['rgba(255,107,53,0.5)','Cut'],
-          ['rgba(255,255,255,0.12)','Rest'],
-          ['rgba(77,184,255,0.5)','Today'],
+          ['rgba(0,255,179,0.6)','Bulk'],
+          ['rgba(255,107,53,0.6)','Cut'],
+          ['rgba(77,184,255,0.5)','Maintain'],
+          ['rgba(255,255,255,0.15)','Rest'],
           ...(isFemale ? [
-            ['rgba(255,215,0,0.5)','Ovulatory 🏆'],
-            ['rgba(0,255,179,0.4)','Follicular 💪'],
-            ['rgba(255,45,155,0.5)','Menstrual 🌑'],
-            ['rgba(185,77,255,0.4)','Late Luteal'],
+            ['rgba(255,215,0,0.75)','Ovulatory'],
+            ['rgba(0,255,179,0.65)','Follicular'],
+            ['rgba(255,45,155,0.7)','Menstrual'],
+            ['rgba(185,77,255,0.65)','Late Luteal'],
+            ['rgba(255,107,53,0.6)','Early Luteal'],
           ] : []),
-        ].map(([bg,lbl])=>(
-          <div key={lbl} className="leg-item"><div className="leg-dot" style={{background:bg}}/>{lbl}</div>
+        ].map(([c,lbl])=>(
+          <div key={lbl} className="leg-item">
+            <div className="leg-border" style={{borderColor:c}}/>
+            {lbl}
+          </div>
         ))}
       </div>
 
@@ -877,7 +919,7 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
       <div className="gcard gc-purple" style={{marginBottom:14}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
           <div style={{fontFamily:'Bebas Neue',fontSize:20,letterSpacing:2,color:'var(--text)'}}>{MONTH_NAMES[currentMonth].toUpperCase()} {currentYear}</div>
-          <span style={{fontSize:10,color:'var(--muted)',fontWeight:800}}>Tap day · ✕ block · 🏋️ start</span>
+          <span style={{fontSize:10,color:'var(--muted)',fontWeight:800}}>Tap day for details · X block</span>
         </div>
         <div className="cal-grid">
           {['SUN','MON','TUE','WED','THU','FRI','SAT'].map(d=><div key={d} className="cal-dh">{d}</div>)}
@@ -888,35 +930,42 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
             const dayAccDone = accDone[day.dateKey] || {};
             const totalAcc = day.accessories?.length || 0;
             const doneAcc  = Object.values(dayAccDone).filter(Boolean).length;
+            const borderClass = getDayBorderClass(day);
+            // Check if this date has a period log entry
+            const hasPeriodMark = periodLog.includes(day.dateKey);
             return (
               <div key={day.dateKey}
-                className={`cal-day ${getDayBg(day)} ${day.today?'cal-today':''} ${isBlocked?'cal-blocked':''}`}
+                className={`cal-day ${borderClass} ${day.today?'cal-today':''} ${isBlocked?'cal-blocked':''}`}
                 onClick={()=>!isBlocked&&setModalDay(day)}>
                 <div className={`cal-num ${day.today?'cal-num-today':''}`}>
                   {day.dayNum}{day.today&&<span style={{fontSize:7,color:'var(--neon-blue)',marginLeft:3,fontWeight:900}}>TODAY</span>}
                 </div>
-                {/* Cycle phase icon for females */}
-                {isFemale && day.cyclePhaseInfo && (
-                  <span style={{fontSize:8,position:'absolute',top:5,left:5}}>{day.cyclePhaseInfo.icon}</span>
-                )}
                 {isBlocked
                   ?<span className="cpill pill-blocked">BLOCKED</span>
                   :day.lift
-                  ?<span className="cpill pill-lift" style={day._coachRebuilt?{background:'rgba(255,45,155,0.15)',color:'var(--neon-pink)'}:{}}>{day._coachRebuilt?'🤖 ':''}{day.lift}</span>
-                  :<span className="cpill pill-rest-cal">{day._coachRebuilt?'🤖 Rest':'Rest'}</span>}
+                  ?<span className="cpill pill-lift" style={day._coachRebuilt?{background:'rgba(255,45,155,0.15)',color:'var(--neon-pink)'}:{}}>{day.lift}</span>
+                  :<span className="cpill pill-rest-cal">{day._coachRebuilt?'AI Rest':'Rest'}</span>}
                 {!isBlocked&&day.cal&&<span className={`cpill ${phaseCalLabel}`}>{day.cal} kcal</span>}
                 {!isBlocked&&wtype&&<span className="cpill" style={{background:wtype.bg,color:wtype.color,fontSize:7}}>{wtype.label}</span>}
-                {/* Accessory progress badge */}
+                {hasPeriodMark&&<span className="cpill pill-period">Period</span>}
                 {!isBlocked && totalAcc > 0 && (
                   <span className="cpill" style={{background: doneAcc===totalAcc?'rgba(0,255,179,0.15)':'rgba(255,255,255,0.06)', color: doneAcc===totalAcc?'var(--neon-green)':'var(--muted)', fontSize:7}}>
-                    {doneAcc===totalAcc?'✓ ':''}{doneAcc}/{totalAcc} acc
+                    {doneAcc===totalAcc?'Done ':''}{doneAcc}/{totalAcc} acc
                   </span>
                 )}
                 {!isBlocked&&day.lift&&(
-                  <button className="cal-start-btn" title="Start this lift" onClick={e=>{e.stopPropagation();onStartFromCalendar(day.lift);}}>🏋️</button>
+                  <button className="cal-start-btn" title="Start this lift" onClick={e=>{e.stopPropagation();onStartFromCalendar(day.lift);}}>+</button>
+                )}
+                {/* Period start button for females — positioned next to start button */}
+                {isFemale && !isBlocked && (
+                  <button
+                    className={`cal-period-btn ${hasPeriodMark?'cal-period-btn-active':''}`}
+                    title={hasPeriodMark?'Remove period mark':'Mark as period start'}
+                    onClick={e=>{e.stopPropagation();onMarkPeriod(day.dateKey);}}
+                  >P</button>
                 )}
                 <button className={`block-btn ${isBlocked?'block-btn-blocked':''}`} onClick={e=>{e.stopPropagation();toggleBlock(day.dateKey);}}>
-                  {isBlocked?'↩':'✕'}
+                  {isBlocked?'<':'X'}
                 </button>
               </div>
             );
@@ -930,14 +979,14 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
           <span className="panel-title">AI SCHEDULE RECOMMENDATION</span>
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
             <span className="badge badge-purple">AI</span>
-            <button className="refresh-btn" onClick={()=>fetchCalAI(phase,blocked)} disabled={aiLoading}>↺ Refresh</button>
+            <button className="refresh-btn" onClick={()=>fetchCalAI(phase,blocked)} disabled={aiLoading}>Refresh</button>
           </div>
         </div>
         {aiLoading?<AICard dot="blue" text="" loading={true}/>
           :aiLines.map((line,i)=><AICard key={i} dot={i===0?'green':i===1?'blue':'orange'} text={line} meta={i===0?'Load recommendation':i===1?'Exercise adjustment':'Recovery priority'}/>)}
       </div>
 
-      {/* ── DAY MODAL ── */}
+      {/* DAY MODAL */}
       {modalDay&&(
         <div className="modal-overlay" onClick={e=>e.target.classList.contains('modal-overlay')&&setModalDay(null)}>
           <div className="modal" style={{maxWidth:500,maxHeight:'85vh',overflowY:'auto'}}>
@@ -949,9 +998,9 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
 
             {/* Cycle phase banner in modal */}
             {isFemale && modalDay.cyclePhaseInfo && (
-              <div style={{background:`rgba(255,45,155,0.08)`,border:'1px solid rgba(255,45,155,0.25)',borderRadius:10,padding:'10px 12px',marginBottom:12}}>
+              <div style={{background:'rgba(255,45,155,0.08)',border:'1px solid rgba(255,45,155,0.25)',borderRadius:10,padding:'10px 12px',marginBottom:12}}>
                 <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-pink)',fontWeight:800,marginBottom:4}}>
-                  {modalDay.cyclePhaseInfo.icon} {modalDay.cyclePhaseInfo.label.toUpperCase()} · CYCLE DAY {modalDay.cycleDay}
+                  {modalDay.cyclePhaseInfo.label.toUpperCase()} · CYCLE DAY {modalDay.cycleDay}
                 </div>
                 <div style={{fontSize:12,fontWeight:700,color:'var(--text)'}}>{modalDay.cyclePhaseInfo.advice}</div>
               </div>
@@ -961,11 +1010,11 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
             <div className="reason-block"><div className="reason-label">WHY THIS IS SCHEDULED</div><div className="reason-text">{modalDay.reason}</div></div>
             <div className="reason-block"><div className="reason-label">NUTRITION TODAY</div><div className="reason-text">{modalDay.nutr}</div></div>
 
-            {/* ── ACCESSORIES ── */}
+            {/* ACCESSORIES */}
             {modalDay.accessories && modalDay.accessories.length > 0 && (
               <div style={{marginBottom:12}}>
                 <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-teal)',fontWeight:800,marginBottom:8}}>
-                  🏋️ ACCESSORIES — {athlete.equipment.toUpperCase()} EQUIPMENT
+                  ACCESSORIES — {athlete.equipment.toUpperCase()} EQUIPMENT
                 </div>
                 {modalDay.accessories.map((acc, idx) => {
                   const isDone = !!(accDone[modalDay.dateKey]?.[idx]);
@@ -986,9 +1035,9 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
                         display:'flex', alignItems:'center', justifyContent:'center',
                         fontSize:10, color: isDone ? '#07050f' : 'transparent',
                         boxShadow: isDone ? '0 0 8px var(--neon-green)' : 'none',
-                      }}>✓</div>
+                      }}>+</div>
                       <div style={{flex:1}}>
-                        <div style={{fontSize:12,fontWeight:800,color:isDone?'var(--neon-green)':'var(--text)',textDecoration:isDone?'none':'none'}}>{acc.name}</div>
+                        <div style={{fontSize:12,fontWeight:800,color:isDone?'var(--neon-green)':'var(--text)'}}>{acc.name}</div>
                         <div style={{fontSize:10,color:'var(--muted)',fontWeight:700}}>{acc.muscle}</div>
                       </div>
                       <div style={{fontSize:10,fontWeight:800,color:isDone?'var(--neon-green)':'var(--muted)'}}>{isDone?'DONE':'TAP'}</div>
@@ -1003,12 +1052,20 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
 
             <div className="modal-btns">
               <button className="mbtn mbtn-close" onClick={()=>setModalDay(null)}>Close</button>
-              <button className="mbtn mbtn-block" onClick={()=>{toggleBlock(modalDay.dateKey);setModalDay(null);}}>✕ Block Day</button>
+              <button className="mbtn mbtn-block" onClick={()=>{toggleBlock(modalDay.dateKey);setModalDay(null);}}>Block Day</button>
               {modalDay.lift&&(
                 <button className="mbtn mbtn-swap"
                   style={{background:'rgba(0,255,179,0.08)',borderColor:'rgba(0,255,179,0.3)',color:'var(--neon-green)'}}
                   onClick={()=>{onStartFromCalendar(modalDay.lift);setModalDay(null);}}>
-                  🏋️ Start This Lift
+                  Start This Lift
+                </button>
+              )}
+              {/* Period button in modal for females */}
+              {isFemale && (
+                <button
+                  className={`mbtn ${periodLog.includes(modalDay.dateKey)?'mbtn-period-remove':'mbtn-period'}`}
+                  onClick={()=>{onMarkPeriod(modalDay.dateKey);}}>
+                  {periodLog.includes(modalDay.dateKey) ? 'Remove period mark' : 'Mark period start'}
                 </button>
               )}
             </div>
@@ -1045,8 +1102,7 @@ Phase: ${athlete.phase} | Phase week: ${athlete.phaseWeek}/${athlete.phaseTotalW
 Goal: ${athlete.goal} | Equipment: ${athlete.equipment} | Days/week: ${athlete.daysPerWeek}
 1RMs — Squat: ${athlete.squat1RM} lbs | Bench: ${athlete.bench1RM} lbs | Deadlift: ${athlete.deadlift1RM} lbs | OHP: ${athlete.ohp1RM} lbs
 Last session: ${FAKE_SESSION.lift} @ ${FAKE_SESSION.weight} lbs, 5x5, velocity dropoff ${FAKE_SESSION.velocityDropoff}%, fatigue ${FAKE_SESSION.fatigueIndex}%
-Bar tilt: ${FAKE_SESSION.avgTilt}° left (persistent, 3 sessions) | Caloric target: ${athlete.caloricTarget} kcal/day
-${athlete.gender==='female'&&athlete.cycleDay?`Cycle day: ${athlete.cycleDay} (${CYCLE_PHASES[getCyclePhase(athlete.cycleDay)]?.label} phase)`:''}
+Bar tilt: ${FAKE_SESSION.avgTilt} left (persistent, 3 sessions) | Caloric target: ${athlete.caloricTarget} kcal/day
 ${athlete.injuryNotes ? `Injury notes: ${athlete.injuryNotes}` : ''}
 `.trim();
 
@@ -1073,7 +1129,7 @@ ${athlete.injuryNotes ? `Injury notes: ${athlete.injuryNotes}` : ''}
   const clearChat = () => { localStorage.removeItem('coachMessages'); setMessages([defaultMsg]); };
 
   const quickPrompts = [
-    "Just got a girlfriend, gym time might drop 👀",
+    "Just got a girlfriend, gym time might drop",
     "Feeling overtrained this week",
     "Want to skip leg day this week",
     "Add more squat volume to my program",
@@ -1088,9 +1144,9 @@ ${athlete.injuryNotes ? `Injury notes: ${athlete.injuryNotes}` : ''}
       <div className="coach-context-bar">
         <div className="coach-ctx-item"><span className="coach-ctx-label">PHASE</span><span className="coach-ctx-val">{athlete.phase.charAt(0).toUpperCase()+athlete.phase.slice(1)} Wk {athlete.phaseWeek}</span></div>
         <div className="coach-ctx-item"><span className="coach-ctx-label">SQUAT 1RM</span><span className="coach-ctx-val">{athlete.squat1RM} lbs</span></div>
-        <div className="coach-ctx-item"><span className="ChatCoachReply:label">LAST FATIGUE</span><span className="coach-ctx-val" style={{color:FAKE_SESSION.fatigueIndex>30?'var(--neon-orange)':'var(--neon-green)'}}>{FAKE_SESSION.fatigueIndex}%</span></div>
+        <div className="coach-ctx-item"><span className="coach-ctx-label">LAST FATIGUE</span><span className="coach-ctx-val" style={{color:FAKE_SESSION.fatigueIndex>30?'var(--neon-orange)':'var(--neon-green)'}}>{FAKE_SESSION.fatigueIndex}%</span></div>
         <div className="coach-ctx-item"><span className="coach-ctx-label">GOAL</span><span className="coach-ctx-val">{athlete.goal}</span></div>
-        <button className="cal-peek-btn" onClick={onGoToCalendar}>📅 Calendar</button>
+        <button className="cal-peek-btn" onClick={onGoToCalendar}>Calendar</button>
         <button className="refresh-btn" onClick={clearChat} style={{marginLeft:4}}>Clear Chat</button>
       </div>
       <div className="quick-prompts">{quickPrompts.map((p,i)=><button key={i} className="qprompt" onClick={()=>setInput(p)}>{p}</button>)}</div>
@@ -1103,9 +1159,9 @@ ${athlete.injuryNotes ? `Injury notes: ${athlete.injuryNotes}` : ''}
             </div>
             {m.role==='assistant'&&m.scheduleRebuilt&&(
               <div className="patch-confirm">
-                <span className="patch-confirm-icon">📅</span>
+                <span className="patch-confirm-icon">+</span>
                 <span className="patch-confirm-text">Calendar fully rebuilt — check your new schedule</span>
-                <button className="patch-confirm-btn" onClick={onGoToCalendar}>See changes →</button>
+                <button className="patch-confirm-btn" onClick={onGoToCalendar}>See changes</button>
               </div>
             )}
           </div>
@@ -1127,9 +1183,9 @@ ${athlete.injuryNotes ? `Injury notes: ${athlete.injuryNotes}` : ''}
 }
 
 // ─────────────────────────────────────────────
-// NUTRITION
+// NUTRITION — includes cycle tracking for females
 // ─────────────────────────────────────────────
-function Nutrition({ athlete }) {
+function Nutrition({ athlete, periodLog, onMarkPeriod }) {
   const [surplus, setSurplus] = useState(athlete.phase==='bulk'?350:athlete.phase==='cut'?-300:0);
   const [aiLines, setAiLines] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
@@ -1148,6 +1204,31 @@ function Nutrition({ athlete }) {
     return            {label:'MAINTENANCE', tip:'Body recomposition', color:'var(--neon-blue)', badge:'MAINTAIN', cls:'badge-blue'};
   };
   const info = getInfo(surplus);
+
+  const isFemale = athlete.gender === 'female';
+  const todayCycleDay = isFemale ? computeCycleDayFromLog(periodLog) : null;
+  const currentPhaseKey = todayCycleDay ? getCyclePhase(todayCycleDay) : null;
+  const currentPhase = currentPhaseKey ? CYCLE_PHASES[currentPhaseKey] : null;
+
+  // Period log calendar — show last 35 days
+  const periodCalDays = useMemo(() => {
+    const days = [];
+    const now = new Date(); now.setHours(0,0,0,0);
+    for (let i = 34; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(now.getDate() - i);
+      days.push({
+        date: d,
+        dateKey: d.toDateString(),
+        dayNum: d.getDate(),
+        weekday: d.getDay(),
+        isToday: i === 0,
+        isPeriod: periodLog.includes(d.toDateString()),
+      });
+    }
+    return days;
+  }, [periodLog]);
+
   const fetchNutrAI = useCallback(async () => {
     setAiLoading(true);
     try {
@@ -1158,13 +1239,14 @@ function Nutrition({ athlete }) {
     setAiLoading(false);
   },[surplus,caloricTarget,logged,protein,proteinTarget,carbs,carbTarget,fat,fatTarget,bw,athlete]);
   useEffect(()=>{fetchNutrAI();},[fetchNutrAI]);
+
   return (
     <div className="screen">
       <div className="page-title gradient-orange">NUTRITION</div>
       <div className="page-sub">Slide your phase · Targets auto-calculate from bodyweight ({bw} lbs)</div>
       <div className="gcard gc-green" style={{marginBottom:14}}>
         <div className="panel-header"><span className="panel-title">PHASE DIAL</span><span className={`badge ${info.cls}`}>{info.badge}</span></div>
-        <div className="phase-labels"><span className="phase-cut">◀ CUTTING</span><span style={{color:'var(--muted)',fontSize:10,fontWeight:800}}>MAINTENANCE</span><span className="phase-bulk">BULKING ▶</span></div>
+        <div className="phase-labels"><span className="phase-cut">CUTTING</span><span style={{color:'var(--muted)',fontSize:10,fontWeight:800}}>MAINTENANCE</span><span className="phase-bulk">BULKING</span></div>
         <input type="range" className="phase-slider" min="-500" max="500" value={surplus} step="50" onChange={e=>setSurplus(parseInt(e.target.value))}/>
         <div className="phase-result" style={{color:info.color}}>{info.label}</div>
         <div style={{textAlign:'center',fontSize:11,color:'var(--muted)',marginTop:4,fontWeight:700}}>{info.tip} · {caloricTarget} kcal target</div>
@@ -1175,11 +1257,91 @@ function Nutrition({ athlete }) {
         <div className="sc sc-blue"><div className="sl">Carbs</div><div className="sv">{carbs}<span className="su">g</span></div><div className="sd" style={{color:carbs/carbTarget>0.85?'var(--neon-green)':'var(--neon-orange)'}}>Target: {carbTarget}g</div></div>
         <div className="sc sc-green"><div className="sl">Fat</div><div className="sv">{fat}<span className="su">g</span></div><div className="sd" style={{color:fat/fatTarget>0.8?'var(--neon-green)':'var(--neon-orange)'}}>Target: {fatTarget}g</div></div>
       </div>
+
+      {/* ── CYCLE TRACKING (females only) ── */}
+      {isFemale && (
+        <div className="gcard gc-purple" style={{marginBottom:14}}>
+          <div className="panel-header">
+            <span className="panel-title">CYCLE TRACKING</span>
+            {currentPhase && <span className="badge badge-pink">{currentPhase.label} · Day {todayCycleDay}</span>}
+          </div>
+
+          {/* Current phase status */}
+          {currentPhase ? (
+            <div className={`cycle-phase-card cycle-phase-card-${currentPhaseKey?.replace('_','-')}`} style={{marginBottom:12}}>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:'Bebas Neue',fontSize:18,letterSpacing:2,color:currentPhase.color}}>{currentPhase.label.toUpperCase()} — Day {todayCycleDay}</div>
+                <div style={{fontSize:11,fontWeight:700,color:'var(--text)',marginTop:4,lineHeight:1.5}}>{currentPhase.advice}</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{fontSize:12,color:'var(--muted)',fontWeight:700,marginBottom:12,padding:'10px 12px',background:'rgba(255,45,155,0.05)',borderRadius:8,border:'1px solid rgba(255,45,155,0.15)'}}>
+              Log your period below to get cycle-adjusted training and nutrition recommendations. Tap any day you had your period.
+            </div>
+          )}
+
+          {/* Period log mini-calendar */}
+          <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-pink)',fontWeight:800,marginBottom:8}}>LOG PERIOD DAYS — tap to mark/unmark</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3,marginBottom:12}}>
+            {['S','M','T','W','T','F','S'].map((d,i)=>(
+              <div key={i} style={{textAlign:'center',fontSize:9,color:'var(--muted)',fontWeight:800,paddingBottom:3}}>{d}</div>
+            ))}
+            {/* Pad to first weekday of period calendar */}
+            {Array.from({length:periodCalDays[0].weekday}).map((_,i)=>(
+              <div key={`pad-${i}`}/>
+            ))}
+            {periodCalDays.map(d=>(
+              <div
+                key={d.dateKey}
+                onClick={()=>onMarkPeriod(d.dateKey)}
+                className={`period-log-day ${d.isPeriod?'period-log-day-period':''} ${d.isToday?'period-log-day-today':''}`}
+              >
+                <span>{d.dayNum}</span>
+                {d.isPeriod && <div className="period-log-dot"/>}
+              </div>
+            ))}
+          </div>
+
+          {/* Upcoming phases */}
+          {todayCycleDay && (
+            <div>
+              <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-purple)',fontWeight:800,marginBottom:8}}>UPCOMING PHASES</div>
+              {Object.entries(CYCLE_PHASES).map(([key, ph]) => {
+                const [start, end] = ph.days;
+                let daysUntil = start - todayCycleDay;
+                if (daysUntil < 0) daysUntil += 28;
+                const isActive = todayCycleDay >= start && todayCycleDay <= end;
+                return (
+                  <div key={key} style={{
+                    display:'flex', alignItems:'center', gap:10, padding:'7px 10px',
+                    borderRadius:8, marginBottom:4,
+                    background: isActive ? 'rgba(255,45,155,0.08)' : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${isActive ? 'rgba(255,45,155,0.3)' : 'rgba(255,255,255,0.07)'}`,
+                  }}>
+                    <div style={{width:8,height:8,borderRadius:'50%',background:ph.color,boxShadow:`0 0 6px ${ph.color}`,flexShrink:0}}/>
+                    <div style={{flex:1,fontSize:11,fontWeight:800,color:isActive?'var(--text)':'var(--muted)'}}>{ph.label}</div>
+                    <div style={{fontSize:10,fontWeight:800,color:isActive?ph.color:'var(--muted)'}}>
+                      {isActive ? 'NOW' : `in ${daysUntil}d`}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {periodLog.length > 0 && (
+            <div style={{fontSize:10,color:'var(--muted)',fontWeight:700,marginTop:8}}>
+              {periodLog.length} period start{periodLog.length>1?'s':''} logged · Calendar adjusts automatically
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="panel-grid">
         <div className="gcard gc-orange">
           <div className="panel-header"><span className="panel-title">QUICK LOG</span></div>
           <div className="quick-log">
-            {[['Breakfast','✓ 820 kcal',true],['Lunch','✓ 1,050 kcal',true],['Pre-workout','✓ 340 kcal',true],['Dinner','+ Add meal',false]].map(([label,val,done])=>(
+            {[['Breakfast','820 kcal',true],['Lunch','1,050 kcal',true],['Pre-workout','340 kcal',true],['Dinner','+ Add meal',false]].map(([label,val,done])=>(
               <button key={label} className="qb" style={done?{}:{borderStyle:'dashed'}}>
                 <span className="ql">{label}</span><span className="qv" style={{color:done?'var(--neon-green)':'var(--muted)'}}>{val}</span>
               </button>
@@ -1199,7 +1361,7 @@ function Nutrition({ athlete }) {
         <div className="gcard gc-purple">
           <div className="panel-header">
             <span className="panel-title">AI NUTRITION</span>
-            <div style={{display:'flex',gap:8,alignItems:'center'}}><span className="badge badge-purple">AI</span><button className="refresh-btn" onClick={fetchNutrAI} disabled={aiLoading}>↺ Refresh</button></div>
+            <div style={{display:'flex',gap:8,alignItems:'center'}}><span className="badge badge-purple">AI</span><button className="refresh-btn" onClick={fetchNutrAI} disabled={aiLoading}>Refresh</button></div>
           </div>
           {aiLoading?<AICard dot="blue" text="" loading={true}/>:aiLines.map((line,i)=><AICard key={i} dot={i===0?'green':'blue'} text={line} meta={i===0?"Today's advice":'Phase strategy'}/>)}
         </div>
@@ -1223,10 +1385,10 @@ function Progress({ athlete }) {
       <div className="page-title gradient-pink">PROGRESS</div>
       <div className="page-sub">8 sessions each · {athlete.phase.charAt(0).toUpperCase()+athlete.phase.slice(1)} phase Wk {athlete.phaseWeek}/{athlete.phaseTotalWeeks}</div>
       <div className="stat-row">
-        <div className="sc sc-blue"><div className="sl">Squat</div><div className="sv">225<span className="su">lbs</span></div><div className="sd up">▲ +30 lbs</div></div>
-        <div className="sc sc-purple"><div className="sl">Bench</div><div className="sv">185<span className="su">lbs</span></div><div className="sd up">▲ +15 lbs</div></div>
-        <div className="sc sc-green"><div className="sl">Deadlift</div><div className="sv">315<span className="su">lbs</span></div><div className="sd up">▲ +30 lbs</div></div>
-        <div className="sc sc-orange"><div className="sl">OHP</div><div className="sv">122<span className="su">lbs</span></div><div className="sd up">▲ +12 lbs</div></div>
+        <div className="sc sc-blue"><div className="sl">Squat</div><div className="sv">225<span className="su">lbs</span></div><div className="sd up">+30 lbs</div></div>
+        <div className="sc sc-purple"><div className="sl">Bench</div><div className="sv">185<span className="su">lbs</span></div><div className="sd up">+15 lbs</div></div>
+        <div className="sc sc-green"><div className="sl">Deadlift</div><div className="sv">315<span className="su">lbs</span></div><div className="sd up">+30 lbs</div></div>
+        <div className="sc sc-orange"><div className="sl">OHP</div><div className="sv">122<span className="su">lbs</span></div><div className="sd up">+12 lbs</div></div>
       </div>
       <div className="panel-grid">
         {lifts.map(l=>{
@@ -1269,15 +1431,39 @@ export default function App() {
     try { const s = localStorage.getItem('athleteProfile'); return s ? JSON.parse(s) : DEFAULT_ATHLETE; }
     catch { return DEFAULT_ATHLETE; }
   });
+
+  // Period log: array of dateKey strings (e.g. "Mon Apr 01 2024")
+  const [periodLog, setPeriodLog] = useState(() => {
+    try { const s = localStorage.getItem('periodLog'); return s ? JSON.parse(s) : []; }
+    catch { return []; }
+  });
+
   const [screen, setScreen]         = useState('setup');
   const [session, setSession]       = useState(null);
   const [presetLift, setPresetLift] = useState(null);
-  const [schedule, setSchedule]     = useState(() => buildSchedule(athlete));
+  const [schedule, setSchedule]     = useState(() => buildSchedule(athlete, []));
+
+  // Persist period log and rebuild schedule whenever it changes
+  useEffect(() => {
+    localStorage.setItem('periodLog', JSON.stringify(periodLog));
+    // Rebuild schedule with updated cycle data whenever period log changes
+    setSchedule(buildSchedule(athlete, periodLog));
+  }, [periodLog]);
+
+  const handleMarkPeriod = useCallback((dateKey) => {
+    setPeriodLog(prev => {
+      if (prev.includes(dateKey)) {
+        return prev.filter(d => d !== dateKey);
+      } else {
+        return [...prev, dateKey];
+      }
+    });
+  }, []);
 
   const handleSaveProfile = useCallback((updated) => {
     setAthlete(updated);
-    setSchedule(buildSchedule(updated));
-  }, []);
+    setSchedule(buildSchedule(updated, periodLog));
+  }, [periodLog]);
 
   const handleStartFromCalendar = (liftName) => { setPresetLift(liftName); setScreen('setup'); };
 
@@ -1299,13 +1485,13 @@ export default function App() {
   const initials = `${athlete.firstName?.[0]??'?'}${athlete.lastName?.[0]??'?'}`.toUpperCase();
 
   const navItems = [
-    {id:'setup',    label:'Start Lift',  icon:'⊕', group:'TRAIN'},
-    {id:'live',     label:'Live Session',icon:'◉', group:'TRAIN'},
-    {id:'analysis', label:'Post-Session',icon:'◈', group:'TRAIN'},
-    {id:'coach',    label:'AI Coach',    icon:'💬', group:'TRAIN'},
-    {id:'calendar', label:'Calendar',    icon:'◫', group:'PLAN'},
-    {id:'nutrition',label:'Nutrition',   icon:'◑', group:'PLAN'},
-    {id:'progress', label:'Progress',    icon:'◬', group:'TRACK'},
+    {id:'setup',    label:'Start Lift',  icon:'+', group:'TRAIN'},
+    {id:'live',     label:'Live Session',icon:'o', group:'TRAIN'},
+    {id:'analysis', label:'Post-Session',icon:'*', group:'TRAIN'},
+    {id:'coach',    label:'AI Coach',    icon:'>', group:'TRAIN'},
+    {id:'calendar', label:'Calendar',    icon:'#', group:'PLAN'},
+    {id:'nutrition',label:'Nutrition',   icon:'~', group:'PLAN'},
+    {id:'progress', label:'Progress',    icon:'^', group:'TRACK'},
   ];
 
   return (
@@ -1347,8 +1533,8 @@ export default function App() {
           {screen==='live'      && <LiveSession    session={session} athlete={athlete}/>}
           {screen==='analysis'  && <PostSession    athlete={athlete}/>}
           {screen==='coach'     && <AICoach        schedule={schedule} onRebuildSchedule={rebuildSchedule} onGoToCalendar={()=>setScreen('calendar')} athlete={athlete}/>}
-          {screen==='calendar'  && <CalendarScreen schedule={schedule} setSchedule={setSchedule} onStartFromCalendar={handleStartFromCalendar} athlete={athlete}/>}
-          {screen==='nutrition' && <Nutrition      athlete={athlete}/>}
+          {screen==='calendar'  && <CalendarScreen schedule={schedule} setSchedule={setSchedule} onStartFromCalendar={handleStartFromCalendar} athlete={athlete} periodLog={periodLog} onMarkPeriod={handleMarkPeriod}/>}
+          {screen==='nutrition' && <Nutrition      athlete={athlete} periodLog={periodLog} onMarkPeriod={handleMarkPeriod}/>}
           {screen==='progress'  && <Progress       athlete={athlete}/>}
           {screen==='profile'   && <ProfileScreen  athlete={athlete} onSave={handleSaveProfile}/>}
         </main>
