@@ -521,3 +521,12 @@ body { font-family: var(--fb); color: var(--text); overflow: hidden; height: 100
 
 .cpill-period       { background:rgba(255,45,155,0.12); color:var(--neon-pink); }
 .cpill-period-heavy { background:rgba(255,45,155,0.22); color:var(--neon-pink); }
+
+
+/* ── ADD THESE TO THE BOTTOM OF App.css ── */
+
+/* Cycle phase calendar backgrounds */
+.cal-ovulatory-bg  { background: rgba(255,215,0,0.08);  }
+.cal-follicular-bg { background: rgba(0,255,179,0.06);  }
+.cal-menstrual-bg  { background: rgba(255,45,155,0.06); }
+.cal-luteal-bg     { background: rgba(185,77,255,0.06); }
