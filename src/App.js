@@ -191,8 +191,6 @@ function ProfileScreen({ athlete, onSave }) {
   };
   const selectStyle = { ...inputStyle, cursor:'pointer' };
 
-
-
   return (
     <div className="screen">
       <div className="page-title gradient-blue">ATHLETE PROFILE</div>
@@ -213,7 +211,7 @@ function ProfileScreen({ athlete, onSave }) {
               {form.age} yrs · {form.heightFt}'{form.heightIn}" ({heightCm}cm) · {form.bodyweight} lbs ({weightKg}kg) · BMI {bmi}
             </div>
             <div style={{fontSize:11,color:'var(--muted)',fontWeight:700}}>
-              {form.trainingAge} yr training age · {form.phase} phase · {form.daysPerWeek}x/week · {form.goal}
+              {form.goal} goal · {form.equipment} equipment
             </div>
           </div>
         </div>
@@ -260,16 +258,6 @@ function ProfileScreen({ athlete, onSave }) {
         {/* Training Info */}
         <div className="gcard gc-purple">
           <div className="panel-header"><span className="panel-title">TRAINING INFO</span></div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 12px'}}>
-            <InputRow label="TRAINING AGE (YRS)">
-              <input style={inputStyle} type="number" min="0" max="30" step="0.5" value={form.trainingAge} onChange={e=>set('trainingAge',parseFloat(e.target.value)||0)}/>
-            </InputRow>
-            <InputRow label="DAYS/WEEK">
-              <select style={selectStyle} value={form.daysPerWeek} onChange={e=>set('daysPerWeek',parseInt(e.target.value))}>
-                {[2,3,4,5,6].map(d=><option key={d} value={d}>{d} days</option>)}
-              </select>
-            </InputRow>
-          </div>
           <InputRow label="PRIMARY GOAL">
             <select style={selectStyle} value={form.goal} onChange={e=>set('goal',e.target.value)}>
               <option value="strength">Strength (1RM focus)</option>
@@ -293,58 +281,6 @@ function ProfileScreen({ athlete, onSave }) {
           </InputRow>
         </div>
 
-        {/* Phase */}
-        <div className="gcard gc-green">
-          <div className="panel-header"><span className="panel-title">CURRENT PHASE</span></div>
-          <InputRow label="PHASE">
-            <div style={{display:'flex',gap:8}}>
-              {[['bulk','🟢 Bulk','var(--neon-green)','rgba(0,200,83,0.2)'],['cut','🔶 Cut','var(--neon-orange)','rgba(255,98,0,0.2)'],['maintain','🔵 Maintain','var(--neon-blue)','rgba(0,149,255,0.2)']].map(([p,lbl,col,bg])=>(
-                <button key={p} onClick={()=>set('phase',p)} style={{
-                  flex:1,padding:'8px 0',borderRadius:8,cursor:'pointer',fontSize:11,fontWeight:800,
-                  background: form.phase===p ? bg : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${form.phase===p ? col : 'rgba(255,255,255,0.1)'}`,
-                  color: form.phase===p ? col : 'var(--muted)',
-                }}>{lbl}</button>
-              ))}
-            </div>
-          </InputRow>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 12px'}}>
-            <InputRow label="PHASE WEEK">
-              <input style={inputStyle} type="number" min="1" max="24" value={form.phaseWeek} onChange={e=>set('phaseWeek',parseInt(e.target.value)||1)}/>
-            </InputRow>
-            <InputRow label="TOTAL WEEKS">
-              <input style={inputStyle} type="number" min="4" max="24" value={form.phaseTotalWeeks} onChange={e=>set('phaseTotalWeeks',parseInt(e.target.value)||12)}/>
-            </InputRow>
-          </div>
-        </div>
-
-        {/* 1RMs */}
-        <div className="gcard gc-orange">
-          <div className="panel-header"><span className="panel-title">1 REP MAXES</span><span className="badge badge-orange">lbs</span></div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 12px'}}>
-            <InputRow label="🏋️ SQUAT">
-              <input style={inputStyle} type="number" min="45" max="1000" value={form.squat1RM} onChange={e=>set('squat1RM',parseInt(e.target.value)||0)}/>
-            </InputRow>
-            <InputRow label="💪 BENCH">
-              <input style={inputStyle} type="number" min="45" max="800" value={form.bench1RM} onChange={e=>set('bench1RM',parseInt(e.target.value)||0)}/>
-            </InputRow>
-            <InputRow label="⚡ DEADLIFT">
-              <input style={inputStyle} type="number" min="45" max="1200" value={form.deadlift1RM} onChange={e=>set('deadlift1RM',parseInt(e.target.value)||0)}/>
-            </InputRow>
-            <InputRow label="🎯 OHP">
-              <input style={inputStyle} type="number" min="45" max="500" value={form.ohp1RM} onChange={e=>set('ohp1RM',parseInt(e.target.value)||0)}/>
-            </InputRow>
-          </div>
-          <div style={{background:'rgba(255,255,255,0.03)',borderRadius:8,padding:'10px 12px',marginTop:4}}>
-            <div style={{fontSize:10,color:'var(--muted)',fontWeight:800,marginBottom:6}}>RATIOS</div>
-            <div style={{display:'flex',gap:12,fontSize:11,fontWeight:700}}>
-              <span style={{color:'var(--neon-blue)'}}>S/B: {form.bench1RM>0?(form.squat1RM/form.bench1RM).toFixed(2):'—'}</span>
-              <span style={{color:'var(--neon-green)'}}>D/S: {form.squat1RM>0?(form.deadlift1RM/form.squat1RM).toFixed(2):'—'}</span>
-              <span style={{color:'var(--neon-purple)'}}>Total: {form.squat1RM+form.bench1RM+form.deadlift1RM} lbs</span>
-            </div>
-          </div>
-        </div>
-
       </div>
 
       <button onClick={handleSave} style={{
@@ -361,7 +297,6 @@ function ProfileScreen({ athlete, onSave }) {
     </div>
   );
 }
-
 // ─────────────────────────────────────────────
 // START LIFT
 // ─────────────────────────────────────────────
