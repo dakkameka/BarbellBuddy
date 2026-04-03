@@ -462,3 +462,36 @@ body { font-family: var(--fb); color: var(--text); overflow: hidden; height: 100
   font-family: var(--fb);
 }
 .cal-peek-btn:hover { background: rgba(124,0,255,0.15); border-color: var(--neon-purple); }
+
+
+
+/* ── PERIOD TRACKER ── */
+.period-btn {
+  flex-shrink:0; background:rgba(255,0,102,0.08); border:2px solid rgba(255,0,102,0.25);
+  border-radius:10px; padding:8px 14px; font-size:12px; font-weight:800;
+  color:var(--neon-pink); cursor:pointer; transition:all 0.15s; font-family:var(--fb);
+  white-space:nowrap;
+}
+.period-btn:hover { background:rgba(255,0,102,0.18); border-color:var(--neon-pink); }
+.period-btn-active { background:rgba(255,0,102,0.18); border-color:var(--neon-pink); }
+
+.flow-row { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+.flow-btn {
+  flex:1; min-width:60px; padding:8px 6px; border-radius:10px; border:2px solid;
+  font-size:11px; font-weight:800; cursor:pointer; text-align:center;
+  transition:all 0.15s; font-family:var(--fb); background:rgba(255,255,255,0.6);
+}
+.flow-light   { border-color:rgba(255,171,0,0.4);  color:var(--neon-yellow); }
+.flow-medium  { border-color:rgba(255,98,0,0.4);   color:var(--neon-orange); }
+.flow-heavy   { border-color:rgba(255,0,102,0.5);  color:var(--neon-pink); }
+.flow-spotting{ border-color:rgba(124,0,255,0.3);  color:var(--neon-purple); }
+.flow-light.flow-active   { background:rgba(255,171,0,0.15);  border-color:var(--neon-yellow); }
+.flow-medium.flow-active  { background:rgba(255,98,0,0.15);   border-color:var(--neon-orange); }
+.flow-heavy.flow-active   { background:rgba(255,0,102,0.15);  border-color:var(--neon-pink); }
+.flow-spotting.flow-active{ background:rgba(124,0,255,0.12);  border-color:var(--neon-purple); }
+
+.period-section { border-top:2px solid rgba(255,0,102,0.12); margin-top:12px; padding-top:12px; }
+.period-section-title { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--neon-pink); font-weight:800; margin-bottom:6px; }
+
+.cpill-period { background:rgba(255,0,102,0.13); color:var(--neon-pink); }
+.cpill-period-heavy { background:rgba(255,0,102,0.22); color:var(--neon-pink); }

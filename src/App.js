@@ -141,7 +141,7 @@ function AICard({ dot, text, meta, loading }) {
 }
 
 // ─────────────────────────────────────────────
-// PROFILE SCREEN
+// INPUT ROW (must be outside ProfileScreen to avoid focus loss)
 // ─────────────────────────────────────────────
 function InputRow({ label, children }) {
   return (
@@ -151,6 +151,10 @@ function InputRow({ label, children }) {
     </div>
   );
 }
+
+// ─────────────────────────────────────────────
+// PROFILE SCREEN
+// ─────────────────────────────────────────────
 function ProfileScreen({ athlete, onSave }) {
   const [form, setForm] = useState({ ...athlete });
   const [saved, setSaved] = useState(false);
@@ -297,6 +301,7 @@ function ProfileScreen({ athlete, onSave }) {
     </div>
   );
 }
+
 // ─────────────────────────────────────────────
 // START LIFT
 // ─────────────────────────────────────────────
@@ -590,6 +595,7 @@ function PostSession({ athlete }) {
 function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete }) {
   const [phase, setPhase]         = useState(athlete.phase);
   const [blocked, setBlocked]     = useState(new Set());
+  const [periodDays, setPeriodDays] = useState({}); // { dateKey: 'spotting'|'light'|'medium'|'heavy' }
   const [modalDay, setModalDay]   = useState(null);
   const [notif, setNotif]         = useState(null);
   const [aiLines, setAiLines]     = useState([]);
@@ -626,6 +632,26 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
     if(nb.has(dayKey)){nb.delete(dayKey);showNotif('Day unblocked.');}
     else{nb.add(dayKey);showNotif('Day blocked. AI updating your plan...');}
     setBlocked(nb); fetchCalAI(phase,nb);
+  };
+
+  const handleFlowSelect = (dateKey, flow, dayLift) => {
+    const updated = { ...periodDays, [dateKey]: flow };
+    setPeriodDays(updated);
+    // Heavy flow + leg-dominant lift → auto-swap to light upper body
+    if (flow === 'heavy' && dayLift && /squat|deadlift|leg/i.test(dayLift)) {
+      setSchedule(prev => prev.map(d =>
+        d.dateKey === dateKey
+          ? {
+              ...d,
+              lift: 'Upper Body (light)',
+              type: 'hypertrophy',
+              reason: 'Auto-adjusted: heavy flow day — lower body work moved to light upper body. Prioritize recovery and comfort.',
+              nutr: d.nutr + ' Iron-rich foods recommended today (spinach, red meat, lentils).',
+            }
+          : d
+      ));
+      showNotif('Heavy flow detected — leg day swapped to light upper body 💪');
+    }
   };
 
   const getDayBg = d => d.rest?'cal-rest-bg':phase==='bulk'?'cal-bulk-bg':phase==='cut'?'cal-cut-bg':'cal-maintain-bg';
@@ -671,7 +697,15 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
         </div>
       </div>
       <div className="legend-row">
-        {[['rgba(124,0,255,0.5)','Lift'],['rgba(0,200,83,0.5)','Bulk'],['rgba(255,98,0,0.5)','Cut'],['rgba(200,200,200,0.7)','Rest'],['rgba(0,149,255,0.5)','Today'],['rgba(255,0,102,0.4)','Blocked']].map(([bg,lbl])=>(
+        {[
+          ['rgba(124,0,255,0.5)','Lift'],
+          ['rgba(0,200,83,0.5)','Bulk'],
+          ['rgba(255,98,0,0.5)','Cut'],
+          ['rgba(200,200,200,0.7)','Rest'],
+          ['rgba(0,149,255,0.5)','Today'],
+          ['rgba(255,0,102,0.4)','Blocked'],
+          ...(athlete.gender==='female' ? [['rgba(255,0,102,0.6)','Period']] : []),
+        ].map(([bg,lbl])=>(
           <div key={lbl} className="leg-item"><div className="leg-dot" style={{background:bg}}/>{lbl}</div>
         ))}
       </div>
@@ -686,8 +720,13 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
           {schedule.map(day=>{
             const isBlocked = blocked.has(day.dateKey);
             const wtype = day.type ? WORKOUT_TYPES[day.type] : null;
+            const isPeriod = !!periodDays[day.dateKey];
+            const periodFlow = periodDays[day.dateKey];
             return (
-              <div key={day.dateKey} className={`cal-day ${getDayBg(day)} ${day.today?'cal-today':''} ${isBlocked?'cal-blocked':''}`} onClick={()=>!isBlocked&&setModalDay(day)}>
+              <div key={day.dateKey}
+                className={`cal-day ${getDayBg(day)} ${day.today?'cal-today':''} ${isBlocked?'cal-blocked':''}`}
+                style={isPeriod ? {outline:'2px solid rgba(255,0,102,0.4)'} : {}}
+                onClick={()=>!isBlocked&&setModalDay(day)}>
                 <div className={`cal-num ${day.today?'cal-num-today':''}`}>
                   {day.dayNum}{day.today&&<span style={{fontSize:7,color:'var(--neon-blue)',marginLeft:3,fontWeight:900}}>TODAY</span>}
                 </div>
@@ -698,6 +737,12 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
                   :<span className="cpill pill-rest-cal">{day._coachRebuilt?'🤖 Rest':'Rest'}</span>}
                 {!isBlocked&&day.cal&&<span className={`cpill ${phaseCalLabel}`}>{day.cal} kcal</span>}
                 {!isBlocked&&wtype&&<span className="cpill" style={{background:wtype.bg,color:wtype.color,fontSize:7}}>{wtype.label}</span>}
+                {/* Period pill on tile */}
+                {athlete.gender==='female'&&isPeriod&&(
+                  <span className={`cpill ${periodFlow==='heavy'?'cpill-period-heavy':'cpill-period'}`}>
+                    🩸 {periodFlow}
+                  </span>
+                )}
                 {!isBlocked&&day.lift&&(
                   <button className="cal-start-btn" title="Start this lift" onClick={e=>{e.stopPropagation();onStartFromCalendar(day.lift);}}>🏋️</button>
                 )}
@@ -720,20 +765,67 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete })
         {aiLoading?<AICard dot="blue" text="" loading={true}/>
           :aiLines.map((line,i)=><AICard key={i} dot={i===0?'green':i===1?'blue':'orange'} text={line} meta={i===0?'Load recommendation':i===1?'Exercise adjustment':'Recovery priority'}/>)}
       </div>
+
+      {/* ── DAY MODAL ── */}
       {modalDay&&(
         <div className="modal-overlay" onClick={e=>e.target.classList.contains('modal-overlay')&&setModalDay(null)}>
           <div className="modal">
             <h2>{modalDay.lift||'REST DAY'}</h2>
-            <div className="modal-sub">{DAY_NAMES[modalDay.weekday]} · {MONTH_NAMES[modalDay.month]} {modalDay.dayNum}, {modalDay.year}{modalDay.today?' · TODAY':''} · {phase.charAt(0).toUpperCase()+phase.slice(1)} Phase</div>
+            <div className="modal-sub">
+              {DAY_NAMES[modalDay.weekday]} · {MONTH_NAMES[modalDay.month]} {modalDay.dayNum}, {modalDay.year}
+              {modalDay.today?' · TODAY':''} · {phase.charAt(0).toUpperCase()+phase.slice(1)} Phase
+            </div>
             {modalDay.type&&(()=>{const wt=WORKOUT_TYPES[modalDay.type];return<span className="why-tag" style={{background:wt.bg,borderColor:wt.border,color:wt.color}}>{wt.label}</span>;})()}
             <div className="reason-block"><div className="reason-label">WHY THIS IS SCHEDULED</div><div className="reason-text">{modalDay.reason}</div></div>
             <div className="reason-block"><div className="reason-label">NUTRITION CONTEXT</div><div className="reason-text">{modalDay.nutr}</div></div>
+
+            {/* ── PERIOD SECTION (female only) ── */}
+            {athlete.gender === 'female' && (
+              <div className="period-section">
+                <div className="period-section-title">🩸 CYCLE TRACKING</div>
+                {periodDays[modalDay.dateKey] ? (
+                  <>
+                    <div style={{fontSize:12,fontWeight:700,color:'var(--neon-pink)',marginBottom:8}}>
+                      Period day logged · tap flow to update:
+                    </div>
+                    <div className="flow-row">
+                      {[
+                        ['spotting','💧 Spotting','flow-spotting'],
+                        ['light',   '🟡 Light',   'flow-light'   ],
+                        ['medium',  '🟠 Medium',  'flow-medium'  ],
+                        ['heavy',   '🔴 Heavy',   'flow-heavy'   ],
+                      ].map(([f,lbl,cls])=>(
+                        <button key={f}
+                          className={`flow-btn ${cls} ${periodDays[modalDay.dateKey]===f?'flow-active':''}`}
+                          onClick={()=>handleFlowSelect(modalDay.dateKey, f, modalDay.lift)}>
+                          {lbl}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      style={{marginTop:10,fontSize:11,fontWeight:800,color:'var(--muted)',background:'none',border:'none',cursor:'pointer',padding:0}}
+                      onClick={()=>setPeriodDays(p=>{ const n={...p}; delete n[modalDay.dateKey]; return n; })}>
+                      ✕ Remove period log
+                    </button>
+                  </>
+                ) : (
+                  <button className="period-btn" style={{width:'100%'}}
+                    onClick={()=>setPeriodDays(p=>({...p,[modalDay.dateKey]:'medium'}))}>
+                    🩸 Log as Period Day
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="modal-btns">
               <button className="mbtn mbtn-close" onClick={()=>setModalDay(null)}>Close</button>
               <button className="mbtn mbtn-block" onClick={()=>{toggleBlock(modalDay.dateKey);setModalDay(null);}}>✕ Block Day</button>
               {modalDay.lift&&(
-                <button className="mbtn mbtn-swap" style={{background:'rgba(0,200,83,0.1)',borderColor:'rgba(0,200,83,0.4)',color:'var(--neon-green)'}}
-                  onClick={()=>{onStartFromCalendar(modalDay.lift);setModalDay(null);}}>🏋️ Start This Lift</button>
+                <button className="mbtn mbtn-swap"
+                  style={{background:'rgba(0,200,83,0.1)',borderColor:'rgba(0,200,83,0.4)',color:'var(--neon-green)'}}
+                  onClick={()=>{onStartFromCalendar(modalDay.lift);setModalDay(null);}}>
+                  🏋️ Start This Lift
+                </button>
               )}
             </div>
           </div>
@@ -1054,7 +1146,10 @@ export default function App() {
   return (
     <div className="app">
       <nav className="topnav">
-        <div className="logo">COACH<span>NOVA</span></div>
+        <div className="logo" style={{display:'flex',alignItems:'center',gap:10}}>
+          <img src="/logo.png" alt="Coach Nova" style={{width:36,height:36,objectFit:'contain'}}/>
+          COACH<span>NOVA</span>
+        </div>
         <div className="nav-right">
           <div className="imu-chip"><div className="pulse-dot"/>IMU L+R LIVE</div>
           <div style={{fontSize:11,color:'var(--muted)',fontWeight:800}}>200Hz · Sync 4ms</div>
