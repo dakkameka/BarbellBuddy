@@ -442,7 +442,8 @@ function ProfileScreen({ athlete, onSave }) {
     borderRadius:8, color:'var(--text)', fontSize:13, fontWeight:700,
     padding:'9px 12px', outline:'none', width:'100%', boxSizing:'border-box',
   };
-  const selectStyle = { ...inputStyle, cursor:'pointer' };
+  // Native <select> dropdowns ignore rgba backgrounds in the popup — must be solid
+  const selectStyle = { ...inputStyle, background:'#130d24', cursor:'pointer' };
 
   const selectedEmphasis = EMPHASIS_OPTIONS.find(o => o.value === form.emphasis);
 
