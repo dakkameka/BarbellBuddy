@@ -584,3 +584,25 @@ body { font-family: var(--fb); color: var(--text); overflow: hidden; height: 100
 .cycle-phase-card-ovulatory    { background: rgba(255,215,0,0.07);  border-color: rgba(255,215,0,0.35); }
 .cycle-phase-card-luteal-early { background: rgba(255,107,53,0.06); border-color: rgba(255,107,53,0.3); }
 .cycle-phase-card-luteal-late  { background: rgba(185,77,255,0.07); border-color: rgba(185,77,255,0.3); }
+
+
+
+
+/* ── NATIVE SELECT DROPDOWN OPTION COLORS ──
+   rgba backgrounds don't apply inside the native OS popup —
+   must use solid colors on both select and option elements.
+*/
+select {
+  background-color: #130d24 !important;
+  color: #f0e6ff !important;
+}
+select option {
+  background-color: #130d24;
+  color: #f0e6ff;
+  font-weight: 700;
+}
+select option:checked,
+select option:hover {
+  background-color: #1e1038;
+  color: #b94dff;
+}
