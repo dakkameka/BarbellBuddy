@@ -11,6 +11,9 @@ const DEFAULT_ATHLETE = {
   phase: 'bulk', phaseWeek: 6, phaseTotalWeeks: 12,
   squat1RM: 285, bench1RM: 215, deadlift1RM: 365, ohp1RM: 145,
   goal: 'strength', equipment: 'full', daysPerWeek: 4, injuryNotes: '', caloricTarget: 3200,
+  // NEW: cycle tracking opt-in (female only) and training emphasis
+  cycleTracking: true,
+  emphasis: '',
 };
 
 const FAKE_SESSION = {
@@ -83,69 +86,43 @@ const CYCLE_PHASES = {
 };
 
 // ── INFER CYCLE PHASE FROM PERIOD LOG ────────
-// Returns: { cycleDay, phase, cycleAnchor } or null
 function inferCycleFromLog(periodLog) {
   if (!periodLog || periodLog.length === 0) return null;
-
-  // Convert all dateKeys to timestamps, sort descending
   const dates = periodLog
     .map(k => new Date(k))
     .sort((a, b) => b - a);
-
-  // Find the most recent run of consecutive (or 1-day-gap) period days
   const MS_DAY = 86400000;
   let runEnd = dates[0];
   let runStart = dates[0];
-
   for (let i = 1; i < dates.length; i++) {
     const gap = (dates[i - 1] - dates[i]) / MS_DAY;
-    if (gap <= 2) {
-      runStart = dates[i];
-    } else {
-      break;
-    }
+    if (gap <= 2) { runStart = dates[i]; } else { break; }
   }
-
-  // Period length: if only 1 day marked, assume 3-day period ending on that day
   const periodLength = Math.max(3, Math.round((runEnd - runStart) / MS_DAY) + 1);
-
-  // Cycle anchor = day 1 of the cycle = start of the most recent period run
-  // If only 1 day marked: anchor = that day (assume it's day 1 of menstrual)
   const cycleAnchor = new Date(runStart);
   cycleAnchor.setHours(0, 0, 0, 0);
-
   return { cycleAnchor, periodLength };
 }
 
-// Given a date, compute what cycle day and phase it is
 function getCyclePhaseForDate(date, cycleAnchor, cycleLength = 28) {
   if (!cycleAnchor) return null;
   const d = new Date(date); d.setHours(0, 0, 0, 0);
   const anchor = new Date(cycleAnchor); anchor.setHours(0, 0, 0, 0);
   const diffDays = Math.round((d - anchor) / 86400000);
-
-  // Normalize to cycle day 1–28
   let cycleDay = ((diffDays % cycleLength) + cycleLength) % cycleLength + 1;
-
   let phase = null;
   for (const [key, p] of Object.entries(CYCLE_PHASES)) {
     if (p.days.includes(cycleDay)) { phase = key; break; }
   }
-  if (!phase) phase = 'luteal_late'; // fallback for day 28+
-
+  if (!phase) phase = 'luteal_late';
   return { cycleDay, phase };
 }
 
-// ── LIFT TYPE OVERRIDE based on cycle phase ──
-// Returns the best lift type for a given phase and original type
 function getOptimizedLiftType(originalType, cyclePhase) {
   if (!cyclePhase) return originalType;
   const ph = CYCLE_PHASES[cyclePhase];
   if (!ph) return originalType;
-
-  // If original type is to be avoided, replace with a recommended type
   if (ph.avoidTypes.includes(originalType) && ph.recommendedTypes.length > 0) {
-    // Pick best match: prefer hypertrophy over recovery for non-rest days
     return ph.recommendedTypes[0];
   }
   return originalType;
@@ -199,7 +176,6 @@ function getAccessoriesForLift(liftName, equipment) {
   return eq.upper || [];
 }
 
-// ── GOAL CONFIG ───────────────────────────────
 function getGoalConfig(goal) {
   switch (goal) {
     case 'strength':     return { mainSets:'5x5', mainPct:0.80, accSets:'3x8',  restDays:3, note:'Neural adaptation focus — heavy, low rep' };
@@ -213,13 +189,14 @@ function getGoalConfig(goal) {
 }
 
 // ── BUILD SCHEDULE ────────────────────────────
+// cycleTracking flag now gates ALL cycle-phase logic
 function buildSchedule(athlete, periodLog = []) {
   const today = new Date(); today.setHours(0,0,0,0);
   const goal = getGoalConfig(athlete.goal);
   const isFemale = athlete.gender === 'female';
-
-  // Infer cycle anchor from period log
-  const cycleInfo = isFemale ? inferCycleFromLog(periodLog) : null;
+  // Only use cycle data if the athlete opted in
+  const useCycle = isFemale && athlete.cycleTracking;
+  const cycleInfo = useCycle ? inferCycleFromLog(periodLog) : null;
 
   let liftPattern;
   if (athlete.goal === 'strength' || athlete.goal === 'powerlifting') {
@@ -318,22 +295,22 @@ function buildSchedule(athlete, periodLog = []) {
     const dateKey = date.toDateString();
     const pattern = { ...liftPattern[i % liftPattern.length] };
 
-    // ── Cycle phase for this date ──
+    // ── Cycle phase — only when opted in ──
     let cyclePhase = null;
     let cycleDay = null;
-    if (isFemale && cycleInfo) {
+    if (useCycle && cycleInfo) {
       const result = getCyclePhaseForDate(date, cycleInfo.cycleAnchor);
       if (result) { cyclePhase = result.phase; cycleDay = result.cycleDay; }
     }
 
-    // ── Period marking: a day is "period" if cyclePhase is menstrual OR manually marked ──
-    const isPeriod = isFemale && (
+    // ── Period marking — only when opted in ──
+    const isPeriod = useCycle && (
       periodLog.includes(dateKey) ||
       (cycleInfo && cyclePhase === 'menstrual')
     );
 
-    // ── Optimize lift type based on cycle phase (females only) ──
-    if (isFemale && cyclePhase && !pattern.rest) {
+    // ── Optimize lift type — only when opted in ──
+    if (useCycle && cyclePhase && !pattern.rest) {
       pattern.type = getOptimizedLiftType(pattern.type, cyclePhase);
     }
 
@@ -354,7 +331,7 @@ function buildSchedule(athlete, periodLog = []) {
     if (pattern.rest) {
       nutr = 'Recovery day. Keep protein at 1g/lb bodyweight. Hydration priority.';
     } else {
-      if (isFemale && cyclePhase && CYCLE_PHASES[cyclePhase]) {
+      if (useCycle && cyclePhase && CYCLE_PHASES[cyclePhase]) {
         nutr = CYCLE_PHASES[cyclePhase].nutrition;
       } else {
         nutr = athlete.phase === 'bulk'
@@ -380,6 +357,30 @@ function buildSchedule(athlete, periodLog = []) {
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAY_NAMES   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+// ── EMPHASIS OPTIONS ─────────────────────────
+const EMPHASIS_OPTIONS = [
+  { value: '', label: 'No specific emphasis' },
+  { value: 'glutes', label: 'Glutes' },
+  { value: 'chest', label: 'Chest' },
+  { value: 'legs', label: 'Legs / Quads' },
+  { value: 'back', label: 'Back (lats + thickness)' },
+  { value: 'shoulders', label: 'Shoulders' },
+  { value: 'biceps', label: 'Biceps / Arms' },
+  { value: 'core', label: 'Core / Abs' },
+  { value: 'upper_body', label: 'Upper body overall' },
+  { value: 'lower_body', label: 'Lower body overall' },
+  { value: 'army_pft', label: 'Army PFT (push-ups, sit-ups, run)' },
+  { value: 'navy_prt', label: 'Navy PRT' },
+  { value: 'marine_pft', label: 'Marine Corps PFT' },
+  { value: 'air_force_pft', label: 'Air Force PFT' },
+  { value: 'police_fitness', label: 'Police / LEO Fitness Test' },
+  { value: 'firefighter', label: 'Firefighter CPAT' },
+  { value: 'crossfit', label: 'CrossFit / MetCon' },
+  { value: 'powerlifting_meet', label: 'Powerlifting meet prep' },
+  { value: 'aesthetics', label: 'Aesthetics / Physique' },
+  { value: 'fat_loss_cardio', label: 'Fat loss + cardio base' },
+];
 
 // ─────────────────────────────────────────────
 // SHARED UI
@@ -443,6 +444,8 @@ function ProfileScreen({ athlete, onSave }) {
   };
   const selectStyle = { ...inputStyle, cursor:'pointer' };
 
+  const selectedEmphasis = EMPHASIS_OPTIONS.find(o => o.value === form.emphasis);
+
   return (
     <div className="screen">
       <div className="page-title gradient-blue">ATHLETE PROFILE</div>
@@ -454,6 +457,11 @@ function ProfileScreen({ athlete, onSave }) {
             <div style={{fontFamily:'Bebas Neue',fontSize:22,letterSpacing:2,color:'var(--text)'}}>{form.firstName} {form.lastName}</div>
             <div style={{fontSize:11,color:'var(--muted)',fontWeight:700,marginTop:2}}>{form.age} yrs · {form.heightFt}'{form.heightIn}" ({heightCm}cm) · {form.bodyweight} lbs ({weightKg}kg) · BMI {bmi}</div>
             <div style={{fontSize:11,color:'var(--muted)',fontWeight:700}}>{form.goal} goal · {form.equipment} equipment · {form.gender}</div>
+            {form.emphasis && (
+              <div style={{fontSize:11,color:'var(--neon-teal)',fontWeight:700,marginTop:2}}>
+                Emphasis: {selectedEmphasis?.label || form.emphasis}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -467,7 +475,7 @@ function ProfileScreen({ athlete, onSave }) {
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 12px'}}>
             <InputRow label="AGE"><input style={inputStyle} type="number" min="13" max="80" value={form.age} onChange={e=>set('age',parseInt(e.target.value)||0)}/></InputRow>
             <InputRow label="GENDER">
-              <select style={selectStyle} value={form.gender} onChange={e=>set('gender',e.target.value)}>
+              <select style={selectStyle} value={form.gender} onChange={e=>{set('gender',e.target.value); if(e.target.value!=='female') set('cycleTracking',false);}}>
                 <option value="male">Male</option>
                 <option value="female">Female</option>
                 <option value="other">Other</option>
@@ -479,12 +487,35 @@ function ProfileScreen({ athlete, onSave }) {
             <InputRow label="HEIGHT (IN)"><input style={inputStyle} type="number" min="0" max="11" value={form.heightIn} onChange={e=>set('heightIn',parseInt(e.target.value)||0)}/></InputRow>
             <InputRow label="WEIGHT (LBS)"><input style={inputStyle} type="number" min="80" max="500" value={form.bodyweight} onChange={e=>set('bodyweight',parseInt(e.target.value)||0)}/></InputRow>
           </div>
+
+          {/* ── CYCLE TRACKING OPT-IN — females only ── */}
           {form.gender === 'female' && (
-            <div style={{fontSize:11,color:'var(--neon-pink)',fontWeight:700,padding:'10px 12px',background:'rgba(255,45,155,0.06)',borderRadius:8,border:'1px solid rgba(255,45,155,0.2)'}}>
-              Mark your period days on the Calendar tab — the app will auto-calculate your cycle phase and optimize your training.
+            <div style={{marginTop:4,marginBottom:6}}>
+              <label
+                style={{display:'flex',alignItems:'flex-start',gap:12,cursor:'pointer',padding:'12px 14px',borderRadius:12,border:`1px solid ${form.cycleTracking?'rgba(255,45,155,0.45)':'rgba(255,255,255,0.08)'}`,background:form.cycleTracking?'rgba(255,45,155,0.06)':'rgba(255,255,255,0.02)',transition:'all 0.2s'}}
+                onClick={()=>set('cycleTracking',!form.cycleTracking)}
+              >
+                {/* Custom checkbox */}
+                <div style={{width:20,height:20,borderRadius:6,flexShrink:0,marginTop:1,display:'flex',alignItems:'center',justifyContent:'center',background:form.cycleTracking?'var(--neon-pink)':'transparent',border:`2px solid ${form.cycleTracking?'var(--neon-pink)':'rgba(255,45,155,0.4)'}`,boxShadow:form.cycleTracking?'0 0 10px rgba(255,45,155,0.5)':'none',transition:'all 0.2s'}}>
+                  {form.cycleTracking && (
+                    <svg width="11" height="9" viewBox="0 0 11 9" fill="none">
+                      <path d="M1 4L4.5 7.5L10 1" stroke="#07050f" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </div>
+                <div>
+                  <div style={{fontSize:12,fontWeight:800,color:form.cycleTracking?'var(--neon-pink)':'var(--text)'}}>Optimize training to my menstrual cycle</div>
+                  <div style={{fontSize:10,color:'var(--muted)',fontWeight:700,marginTop:3,lineHeight:1.5}}>
+                    {form.cycleTracking
+                      ? 'Cycle phase tracked · workout intensity, lift type, and nutrition auto-adjusted each day. Mark period days on the Calendar tab.'
+                      : 'Turn on if you have a natural cycle. Leave off if you use an IUD, hormonal birth control, or prefer not to track.'}
+                  </div>
+                </div>
+              </label>
             </div>
           )}
         </div>
+
         <div className="gcard gc-purple">
           <div className="panel-header"><span className="panel-title">TRAINING INFO</span></div>
           <InputRow label="PRIMARY GOAL — changes your entire program">
@@ -497,6 +528,21 @@ function ProfileScreen({ athlete, onSave }) {
               <option value="endurance">Strength endurance (3x15, 55%)</option>
             </select>
           </InputRow>
+
+          {/* ── TRAINING EMPHASIS — both genders ── */}
+          <InputRow label="TRAINING EMPHASIS — the AI coach will always prioritize this">
+            <select style={selectStyle} value={form.emphasis} onChange={e=>set('emphasis',e.target.value)}>
+              {EMPHASIS_OPTIONS.map(o=>(
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </InputRow>
+          {form.emphasis && (
+            <div style={{fontSize:11,color:'var(--neon-teal)',fontWeight:700,padding:'8px 12px',background:'rgba(0,229,255,0.06)',borderRadius:8,border:'1px solid rgba(0,229,255,0.2)',marginBottom:10,lineHeight:1.5}}>
+              Coach Nova will weave <strong style={{color:'var(--neon-teal)'}}>{selectedEmphasis?.label}</strong> into your accessories, session order, and schedule recommendations every session.
+            </div>
+          )}
+
           <InputRow label="AVAILABLE EQUIPMENT — changes your accessories">
             <select style={selectStyle} value={form.equipment} onChange={e=>set('equipment',e.target.value)}>
               <option value="full">Full gym (rack, cables, machines)</option>
@@ -764,7 +810,9 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
   const today = new Date(); today.setHours(0,0,0,0);
   const currentMonth = today.getMonth();
   const currentYear  = today.getFullYear();
+  // Gate all cycle UI on both gender AND opt-in
   const isFemale = athlete.gender === 'female';
+  const useCycle = isFemale && athlete.cycleTracking;
 
   const showNotif = msg => { setNotif(msg); setTimeout(()=>setNotif(null),5000); };
 
@@ -799,9 +847,9 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
     setAccDone(prev => ({ ...prev, [dateKey]: { ...(prev[dateKey]||{}), [idx]: !(prev[dateKey]?.[idx]) } }));
   };
 
-  // Border class: cycle phase for females takes priority over training phase
   const getDayBorderClass = (d) => {
-    if (isFemale && d.cyclePhase && CYCLE_PHASES[d.cyclePhase]) {
+    // Cycle phase border only when opted in
+    if (useCycle && d.cyclePhase && CYCLE_PHASES[d.cyclePhase]) {
       return CYCLE_PHASES[d.cyclePhase].borderClass;
     }
     if (d.rest) return 'cal-border-rest';
@@ -811,9 +859,7 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
   const phaseCalLabel = phase==='cut'?'pill-cut-cal':'pill-bulk-cal';
   const firstDayOfWeek = schedule[0]?.weekday ?? 0;
   const gc = getGoalConfig(athlete.goal);
-
-  // Count how many period days are marked
-  const hasCycleData = isFemale && periodLog.length > 0;
+  const hasCycleData = useCycle && periodLog.length > 0;
 
   return (
     <div className="screen">
@@ -827,7 +873,11 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
           <div><div style={{fontSize:8,letterSpacing:2,color:'var(--muted)',fontWeight:800}}>PROGRAM</div><div style={{fontFamily:'Bebas Neue',fontSize:16,color:'var(--neon-blue)',letterSpacing:1}}>{gc.mainSets}</div></div>
           <div><div style={{fontSize:8,letterSpacing:2,color:'var(--muted)',fontWeight:800}}>EQUIPMENT</div><div style={{fontFamily:'Bebas Neue',fontSize:16,color:'var(--neon-teal)',letterSpacing:1}}>{athlete.equipment.toUpperCase()}</div></div>
           <div><div style={{fontSize:8,letterSpacing:2,color:'var(--muted)',fontWeight:800}}>PHASE</div><div style={{fontFamily:'Bebas Neue',fontSize:16,color:'var(--neon-green)',letterSpacing:1}}>WK {athlete.phaseWeek}/{athlete.phaseTotalWeeks}</div></div>
-          {isFemale && (
+          {athlete.emphasis && (
+            <div><div style={{fontSize:8,letterSpacing:2,color:'var(--muted)',fontWeight:800}}>EMPHASIS</div><div style={{fontFamily:'Bebas Neue',fontSize:14,color:'var(--neon-teal)',letterSpacing:1}}>{EMPHASIS_OPTIONS.find(o=>o.value===athlete.emphasis)?.label || athlete.emphasis}</div></div>
+          )}
+          {/* Cycle tracking status — only shown when opted in */}
+          {useCycle && (
             <div style={{marginLeft:'auto',fontSize:11,color:hasCycleData?'var(--neon-pink)':'var(--muted)',fontWeight:700}}>
               {hasCycleData
                 ? `Cycle tracked · ${periodLog.length} day${periodLog.length>1?'s':''} marked · training optimized`
@@ -872,10 +922,10 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
         </div>
       </div>
 
-      {/* Legend */}
+      {/* Legend — cycle version only when opted in */}
       <div className="legend-row">
         <span style={{fontSize:10,fontWeight:800,color:'var(--muted)'}}>BORDERS:</span>
-        {isFemale ? (
+        {useCycle ? (
           <>
             {[
               ['rgba(255,45,155,0.7)','Menstrual'],
@@ -912,7 +962,8 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
       <div className="gcard gc-purple" style={{marginBottom:14}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
           <div style={{fontFamily:'Bebas Neue',fontSize:20,letterSpacing:2,color:'var(--text)'}}>{MONTH_NAMES[currentMonth].toUpperCase()} {currentYear}</div>
-          <span style={{fontSize:10,color:'var(--muted)',fontWeight:800}}>Tap day · X block{isFemale?' · P mark period':''}</span>
+          {/* Period tracking hint only when opted in */}
+          <span style={{fontSize:10,color:'var(--muted)',fontWeight:800}}>Tap day · X block{useCycle?' · P mark period':''}</span>
         </div>
         <div className="cal-grid">
           {['SUN','MON','TUE','WED','THU','FRI','SAT'].map(d=><div key={d} className="cal-dh">{d}</div>)}
@@ -924,7 +975,8 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
             const totalAcc = day.accessories?.length || 0;
             const doneAcc  = Object.values(dayAccDone).filter(Boolean).length;
             const borderClass = getDayBorderClass(day);
-            const cyclePh = isFemale && day.cyclePhase ? CYCLE_PHASES[day.cyclePhase] : null;
+            // Only show cycle phase pill when opted in
+            const cyclePh = useCycle && day.cyclePhase ? CYCLE_PHASES[day.cyclePhase] : null;
             return (
               <div key={day.dateKey}
                 className={`cal-day ${borderClass} ${day.today?'cal-today':''} ${isBlocked?'cal-blocked':''}`}
@@ -932,7 +984,6 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
                 <div className={`cal-num ${day.today?'cal-num-today':''}`}>
                   {day.dayNum}{day.today&&<span style={{fontSize:7,color:'var(--neon-blue)',marginLeft:3,fontWeight:900}}>TODAY</span>}
                 </div>
-                {/* Cycle phase pill for females */}
                 {cyclePh && !isBlocked && (
                   <span className="cpill" style={{background:`${cyclePh.color.replace('var(','').replace(')','').trim()}1a`,color:cyclePh.color,fontSize:7,border:`1px solid ${cyclePh.color}40`}}>
                     {cyclePh.label} · D{day.cycleDay}
@@ -945,7 +996,8 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
                   :<span className="cpill pill-rest-cal">{day._coachRebuilt?'AI Rest':'Rest'}</span>}
                 {!isBlocked&&day.cal&&<span className={`cpill ${phaseCalLabel}`}>{day.cal} kcal</span>}
                 {!isBlocked&&wtype&&<span className="cpill" style={{background:wtype.bg,color:wtype.color,fontSize:7}}>{wtype.label}</span>}
-                {day.isPeriod&&<span className="cpill pill-period">Period</span>}
+                {/* Period pill only when opted in */}
+                {useCycle && day.isPeriod && <span className="cpill pill-period">Period</span>}
                 {!isBlocked && totalAcc > 0 && (
                   <span className="cpill" style={{background: doneAcc===totalAcc?'rgba(0,255,179,0.15)':'rgba(255,255,255,0.06)', color: doneAcc===totalAcc?'var(--neon-green)':'var(--muted)', fontSize:7}}>
                     {doneAcc===totalAcc?'Done ':''}{doneAcc}/{totalAcc} acc
@@ -954,7 +1006,8 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
                 {!isBlocked&&day.lift&&(
                   <button className="cal-start-btn" title="Start this lift" onClick={e=>{e.stopPropagation();onStartFromCalendar(day.lift);}}>+</button>
                 )}
-                {isFemale && !isBlocked && (
+                {/* Period button only when opted in */}
+                {useCycle && !isBlocked && (
                   <button
                     className={`cal-period-btn ${day.isPeriod?'cal-period-btn-active':''}`}
                     title={day.isPeriod?'Remove period mark':'Mark as period day'}
@@ -992,8 +1045,8 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
               {modalDay.today?' · TODAY':''} · {phase.charAt(0).toUpperCase()+phase.slice(1)} Phase
             </div>
 
-            {/* CYCLE PHASE BLOCK — females with cycle data */}
-            {isFemale && modalDay.cyclePhase && (() => {
+            {/* CYCLE PHASE BLOCK — only when opted in */}
+            {useCycle && modalDay.cyclePhase && (() => {
               const cp = CYCLE_PHASES[modalDay.cyclePhase];
               return (
                 <div style={{
@@ -1017,8 +1070,8 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
               );
             })()}
 
-            {/* Period day note */}
-            {isFemale && modalDay.isPeriod && !modalDay.cyclePhase && (
+            {/* Period day note — only when opted in and no cycle phase computed yet */}
+            {useCycle && modalDay.isPeriod && !modalDay.cyclePhase && (
               <div style={{background:'rgba(255,45,155,0.08)',border:'1px solid rgba(255,45,155,0.25)',borderRadius:10,padding:'10px 12px',marginBottom:12}}>
                 <div style={{fontSize:9,letterSpacing:2,color:'var(--neon-pink)',fontWeight:800,marginBottom:4}}>PERIOD DAY</div>
                 <div style={{fontSize:12,fontWeight:700,color:'var(--text)'}}>Lower intensity recommended — listen to your body.</div>
@@ -1071,7 +1124,8 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
                   Start This Lift
                 </button>
               )}
-              {isFemale && (
+              {/* Period toggle in modal — only when opted in */}
+              {useCycle && (
                 <button className={`mbtn ${modalDay.isPeriod?'mbtn-period-remove':'mbtn-period'}`}
                   onClick={()=>{onMarkPeriod(modalDay.dateKey);}}>
                   {modalDay.isPeriod ? 'Unmark Period Day' : 'Mark as Period Day'}
@@ -1089,7 +1143,8 @@ function CalendarScreen({ schedule, setSchedule, onStartFromCalendar, athlete, p
 // AI COACH
 // ─────────────────────────────────────────────
 function AICoach({ schedule, onRebuildSchedule, onGoToCalendar, athlete }) {
-  const defaultMsg = { role:'assistant', content:`Hey ${athlete.firstName}! I'm your Coach Nova. I know your full training history — squats, bench, deads, everything. What's on your mind? Tell me about life, training, goals — anything that affects your schedule and I'll adjust it in real time.` };
+  const emphasisLabel = EMPHASIS_OPTIONS.find(o=>o.value===athlete.emphasis)?.label || '';
+  const defaultMsg = { role:'assistant', content:`Hey ${athlete.firstName}! I'm your Coach Nova. I know your full training history — squats, bench, deads, everything.${emphasisLabel ? ` I see your emphasis is ${emphasisLabel} — I'll keep that front of mind every session.` : ''} What's on your mind? Tell me about life, training, goals — anything that affects your schedule and I'll adjust it in real time.` };
   const [messages, setMessages] = useState(() => {
     try { const saved = localStorage.getItem('coachMessages'); return saved ? JSON.parse(saved) : [defaultMsg]; }
     catch { return [defaultMsg]; }
@@ -1099,6 +1154,8 @@ function AICoach({ schedule, onRebuildSchedule, onGoToCalendar, athlete }) {
   const bottomRef             = useRef(null);
   useEffect(() => { localStorage.setItem('coachMessages', JSON.stringify(messages)); }, [messages]);
   useEffect(() => { bottomRef.current?.scrollIntoView({behavior:'smooth'}); }, [messages]);
+
+  // Emphasis and cycle context baked into every AI call
   const athleteContext = `
 Athlete: ${athlete.name} | Age: ${athlete.age} | Gender: ${athlete.gender}
 Height: ${athlete.heightFt}'${athlete.heightIn}" | Bodyweight: ${athlete.bodyweight} lbs | Training age: ${athlete.trainingAge} yrs
@@ -1107,7 +1164,10 @@ Goal: ${athlete.goal} | Equipment: ${athlete.equipment} | Days/week: ${athlete.d
 1RMs — Squat: ${athlete.squat1RM} lbs | Bench: ${athlete.bench1RM} lbs | Deadlift: ${athlete.deadlift1RM} lbs | OHP: ${athlete.ohp1RM} lbs
 Last session: ${FAKE_SESSION.lift} @ ${FAKE_SESSION.weight} lbs, 5x5, velocity dropoff ${FAKE_SESSION.velocityDropoff}%, fatigue ${FAKE_SESSION.fatigueIndex}%
 Bar tilt: ${FAKE_SESSION.avgTilt} left (persistent, 3 sessions) | Caloric target: ${athlete.caloricTarget} kcal/day
-${athlete.injuryNotes ? `Injury notes: ${athlete.injuryNotes}` : ''}`.trim();
+${athlete.injuryNotes ? `Injury notes: ${athlete.injuryNotes}` : ''}
+${athlete.emphasis ? `TRAINING EMPHASIS (high priority — always incorporate): ${emphasisLabel} (${athlete.emphasis})` : ''}
+${athlete.gender === 'female' && athlete.cycleTracking ? 'Cycle tracking: ENABLED — adjust recommendations to menstrual phase.' : athlete.gender === 'female' ? 'Cycle tracking: DISABLED (IUD/hormonal BC or opted out) — do NOT reference cycle phases.' : ''}`.trim();
+
   const scheduleForPrompt = schedule.map(d => ({ dateLabel: d.dateLabel, weekday: DAY_NAMES[d.weekday], lift: d.lift, rest: d.rest }));
   const send = async () => {
     if (!input.trim() || loading) return;
@@ -1125,14 +1185,16 @@ ${athlete.injuryNotes ? `Injury notes: ${athlete.injuryNotes}` : ''}`.trim();
   };
   const handleKey = e => { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();} };
   const clearChat = () => { localStorage.removeItem('coachMessages'); setMessages([defaultMsg]); };
+
   const quickPrompts = [
     "Just got a girlfriend, gym time might drop",
     "Feeling overtrained this week",
     "Want to skip leg day this week",
-    "Add more squat volume to my program",
+    `Add more ${emphasisLabel||'squat'} volume to my program`,
     "Traveling next week, no gym access",
     "I'm injured — sore lower back",
   ];
+
   return (
     <div className="screen">
       <div className="page-title gradient-pink">AI COACH</div>
@@ -1142,6 +1204,12 @@ ${athlete.injuryNotes ? `Injury notes: ${athlete.injuryNotes}` : ''}`.trim();
         <div className="coach-ctx-item"><span className="coach-ctx-label">SQUAT 1RM</span><span className="coach-ctx-val">{athlete.squat1RM} lbs</span></div>
         <div className="coach-ctx-item"><span className="coach-ctx-label">LAST FATIGUE</span><span className="coach-ctx-val" style={{color:FAKE_SESSION.fatigueIndex>30?'var(--neon-orange)':'var(--neon-green)'}}>{FAKE_SESSION.fatigueIndex}%</span></div>
         <div className="coach-ctx-item"><span className="coach-ctx-label">GOAL</span><span className="coach-ctx-val">{athlete.goal}</span></div>
+        {athlete.emphasis && (
+          <div className="coach-ctx-item">
+            <span className="coach-ctx-label">EMPHASIS</span>
+            <span className="coach-ctx-val" style={{color:'var(--neon-teal)',fontSize:13}}>{emphasisLabel}</span>
+          </div>
+        )}
         <button className="cal-peek-btn" onClick={onGoToCalendar}>Calendar</button>
         <button className="refresh-btn" onClick={clearChat} style={{marginLeft:4}}>Clear Chat</button>
       </div>
@@ -1179,7 +1247,7 @@ ${athlete.injuryNotes ? `Injury notes: ${athlete.injuryNotes}` : ''}`.trim();
 }
 
 // ─────────────────────────────────────────────
-// NUTRITION — no period tracker
+// NUTRITION
 // ─────────────────────────────────────────────
 function Nutrition({ athlete }) {
   const [surplus, setSurplus] = useState(athlete.phase==='bulk'?350:athlete.phase==='cut'?-300:0);
@@ -1318,8 +1386,19 @@ function Progress({ athlete }) {
 // ─────────────────────────────────────────────
 export default function App() {
   const [athlete, setAthlete] = useState(() => {
-    try { const s = localStorage.getItem('athleteProfile'); return s ? JSON.parse(s) : DEFAULT_ATHLETE; }
-    catch { return DEFAULT_ATHLETE; }
+    try {
+      const s = localStorage.getItem('athleteProfile');
+      if (s) {
+        const parsed = JSON.parse(s);
+        // Back-fill new fields for existing saved profiles
+        return {
+          cycleTracking: true,
+          emphasis: '',
+          ...parsed,
+        };
+      }
+    } catch {}
+    return DEFAULT_ATHLETE;
   });
   const [periodLog, setPeriodLog] = useState(() => {
     try { const s = localStorage.getItem('periodLog'); return s ? JSON.parse(s) : []; }
