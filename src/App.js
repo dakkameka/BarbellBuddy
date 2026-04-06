@@ -5,6 +5,7 @@ import { getPostSessionDebrief, getLiveCoachMessage, getCalendarAdjustment, getN
 // ─────────────────────────────────────────────
 // DEFAULT ATHLETE PROFILE
 // ─────────────────────────────────────────────
+
 const DEFAULT_ATHLETE = {
   name: 'Jane Doe', firstName: 'Jane', lastName: 'Doe', gender: 'female',
   age: 23, heightFt: 5, heightIn: 2, bodyweight: 130, trainingAge: 3,
