@@ -1,9 +1,51 @@
 /* ─────────────────────────────────────────────
-   nutrition.css  — Bulk / Cut calendar + period tracker
+   nutrition.css — bulk/cut calendar + period droplet tracker
    ───────────────────────────────────────────── */
 
 .nutrition-screen {
   padding: 0;
+}
+
+/* ── Disabled state ── */
+.nutr-disabled-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 40px 20px;
+}
+.nutr-disabled-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  max-width: 380px;
+  padding: 40px 32px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.11), rgba(255,255,255,0.06));
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.22);
+}
+.nutr-disabled-icon {
+  font-size: 2.6rem;
+  line-height: 1;
+}
+.nutr-disabled-title {
+  font-family: var(--fd);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.nutr-disabled-body {
+  font-size: 0.86rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.nutr-disabled-body strong {
+  color: var(--text-soft);
 }
 
 /* ── Shell ── */
@@ -21,17 +63,12 @@
   overflow: hidden;
   border-radius: var(--radius-xl);
   padding: 20px 24px;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.13) 0%,
-    rgba(255, 255, 255, 0.07) 100%
-  );
+  background: linear-gradient(180deg, rgba(255,255,255,0.13) 0%, rgba(255,255,255,0.07) 100%);
   backdrop-filter: blur(24px) saturate(140%);
   -webkit-backdrop-filter: blur(24px) saturate(140%);
-  border: 1px solid rgba(255, 255, 255, 0.11);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255,255,255,0.11);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
 }
-
 .nutr-banner-label {
   font-size: 0.62rem;
   text-transform: uppercase;
@@ -40,13 +77,6 @@
   color: var(--muted);
   margin-bottom: 10px;
 }
-
-.nutr-banner-left {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
 .nutr-banner-meta {
   display: flex;
   justify-content: space-between;
@@ -56,7 +86,7 @@
   font-weight: 600;
 }
 
-/* cycle pills */
+/* Cycle pills */
 .nutr-cycle-pill {
   display: inline-flex;
   align-items: center;
@@ -68,26 +98,25 @@
   width: fit-content;
   border: 1px solid transparent;
 }
-.nutr-pill-bulk    { background: rgba(87,165,255,0.14); border-color: rgba(87,165,255,0.28); color: #bcdcff; }
-.nutr-pill-cut     { background: rgba(226,75,74,0.14);  border-color: rgba(226,75,74,0.28);  color: #ffb8b8; }
-.nutr-pill-maintain{ background: rgba(99,153,34,0.14);  border-color: rgba(99,153,34,0.28);  color: #b8e88a; }
-.nutr-pill-none    { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.1); color: var(--muted); }
+.nutr-pill-bulk     { background: rgba(87,165,255,0.14); border-color: rgba(87,165,255,0.28); color: #bcdcff; }
+.nutr-pill-cut      { background: rgba(226,75,74,0.14);  border-color: rgba(226,75,74,0.28);  color: #ffb8b8; }
+.nutr-pill-maintain { background: rgba(87,240,192,0.14); border-color: rgba(87,240,192,0.28); color: #b8e88a; }
+.nutr-pill-none     { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.1); color: var(--muted); }
 
 .nutr-dot {
-  width: 8px;
-  height: 8px;
+  width: 8px; height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
-.nutr-dot-bulk    { background: var(--blue); box-shadow: 0 0 8px rgba(87,165,255,0.7); }
-.nutr-dot-cut     { background: #e24b4a;     box-shadow: 0 0 8px rgba(226,75,74,0.7); }
-.nutr-dot-maintain{ background: var(--mint); box-shadow: 0 0 8px rgba(87,240,192,0.7); }
+.nutr-dot-bulk     { background: var(--blue);  box-shadow: 0 0 8px rgba(87,165,255,0.7); }
+.nutr-dot-cut      { background: #e24b4a;       box-shadow: 0 0 8px rgba(226,75,74,0.7); }
+.nutr-dot-maintain { background: var(--mint);   box-shadow: 0 0 8px rgba(87,240,192,0.7); }
 
-/* progress bar */
+/* Progress bar */
 .nutr-prog-wrap {
   height: 5px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255,255,255,0.08);
   overflow: hidden;
   margin-top: 10px;
 }
@@ -96,9 +125,9 @@
   border-radius: 999px;
   transition: width 0.4s ease;
 }
-.nutr-prog-bulk    { background: linear-gradient(90deg, var(--blue), var(--cyan)); }
-.nutr-prog-cut     { background: linear-gradient(90deg, #e24b4a, #ff8a8a); }
-.nutr-prog-maintain{ background: linear-gradient(90deg, var(--mint), #a8ffdf); }
+.nutr-prog-bulk     { background: linear-gradient(90deg, var(--blue), var(--cyan)); }
+.nutr-prog-cut      { background: linear-gradient(90deg, #e24b4a, #ff8a8a); }
+.nutr-prog-maintain { background: linear-gradient(90deg, var(--mint), #a8ffdf); }
 
 /* ── Body grid ── */
 .nutr-body {
@@ -111,20 +140,15 @@
 /* ── Glass panel base ── */
 .nutr-cal-card,
 .nutr-panel {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.12) 0%,
-    rgba(255, 255, 255, 0.07) 100%
-  );
+  background: linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.07) 100%);
   backdrop-filter: blur(24px) saturate(140%);
   -webkit-backdrop-filter: blur(24px) saturate(140%);
-  border: 1px solid rgba(255, 255, 255, 0.11);
+  border: 1px solid rgba(255,255,255,0.11);
   border-radius: var(--radius-xl);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
   padding: 20px;
 }
 
-/* ── Sidebar ── */
 .nutr-sidebar {
   display: flex;
   flex-direction: column;
@@ -139,8 +163,8 @@
   margin-bottom: 14px;
 }
 .nutr-nav-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.1);
   border-radius: 12px;
   padding: 5px 12px;
   color: var(--text-soft);
@@ -150,7 +174,7 @@
   transition: background 0.15s, transform 0.15s;
 }
 .nutr-nav-btn:hover {
-  background: rgba(255, 255, 255, 0.13);
+  background: rgba(255,255,255,0.13);
   transform: translateY(-1px);
 }
 .nutr-cal-month {
@@ -184,6 +208,10 @@
   gap: 5px;
 }
 
+.nutr-day-empty {
+  height: 56px;
+}
+
 /* ── Day cells ── */
 .nutr-day {
   height: 56px;
@@ -194,45 +222,29 @@
   justify-content: center;
   cursor: pointer;
   border: 1.5px solid transparent;
-  background: rgba(255, 255, 255, 0.05);
-  padding: 0;
+  background: rgba(255,255,255,0.05);
   position: relative;
-  transition: filter 0.12s, transform 0.12s, box-shadow 0.12s;
+  transition: filter 0.12s, transform 0.12s;
   gap: 2px;
+  user-select: none;
 }
-.nutr-day:not(:disabled):hover {
-  filter: brightness(1.12);
+.nutr-day:not(.nutr-day-past):hover {
+  filter: brightness(1.14);
   transform: translateY(-1px);
 }
-.nutr-day:disabled {
-  opacity: 0.32;
-  cursor: not-allowed;
+.nutr-day-past {
+  opacity: 0.38;
+  cursor: default;
 }
 
 /* type colours */
-.nutr-day-bulk     { background: rgba(87,165,255,0.18); border-color: rgba(87,165,255,0.22); }
-.nutr-day-cut      { background: rgba(226,75,74,0.16);  border-color: rgba(226,75,74,0.22);  }
-.nutr-day-maintain { background: rgba(87,240,192,0.14); border-color: rgba(87,240,192,0.22); }
-
-/* period */
-.nutr-day-period {
-  background: rgba(212,83,126,0.18);
-  border-color: rgba(212,83,126,0.34);
-}
-.nutr-day-predicted {
-  background: transparent;
-  border-color: rgba(212,83,126,0.3);
-  border-style: dashed;
-}
+.nutr-day-bulk     { background: rgba(87,165,255,0.17);  border-color: rgba(87,165,255,0.2); }
+.nutr-day-cut      { background: rgba(226,75,74,0.15);   border-color: rgba(226,75,74,0.2); }
+.nutr-day-maintain { background: rgba(87,240,192,0.13);  border-color: rgba(87,240,192,0.2); }
 
 /* selected / today */
-.nutr-day-selected {
-  box-shadow: 0 0 0 2px var(--text);
-  z-index: 2;
-}
-.nutr-day-today {
-  border-color: rgba(255, 255, 255, 0.28) !important;
-}
+.nutr-day-selected { box-shadow: 0 0 0 2px var(--text); z-index: 2; }
+.nutr-day-today    { border-color: rgba(255,255,255,0.26) !important; }
 
 /* day number */
 .nutr-day-num {
@@ -244,8 +256,6 @@
 .nutr-day-bulk     .nutr-day-num { color: #bcdcff; }
 .nutr-day-cut      .nutr-day-num { color: #ffb8b8; }
 .nutr-day-maintain .nutr-day-num { color: #b8e88a; }
-.nutr-day-period   .nutr-day-num { color: #f4b8d4; }
-.nutr-day-predicted .nutr-day-num { color: rgba(212,83,126,0.75); }
 
 /* sub-tag */
 .nutr-day-tag {
@@ -253,7 +263,7 @@
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  opacity: 0.75;
+  opacity: 0.65;
   color: inherit;
   line-height: 1;
 }
@@ -262,11 +272,46 @@
 .nutr-today-dot {
   position: absolute;
   bottom: 5px;
+  left: 50%;
+  transform: translateX(-50%);
   width: 4px;
   height: 4px;
   border-radius: 50%;
   background: var(--text);
-  opacity: 0.7;
+  opacity: 0.6;
+}
+
+/* ── Droplet button ── */
+.nutr-droplet {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.14s, background 0.14s;
+  z-index: 3;
+}
+.nutr-droplet:hover {
+  transform: scale(1.25);
+  background: rgba(212,83,126,0.12);
+}
+.nutr-droplet-on {
+  background: rgba(212,83,126,0.1);
+}
+.nutr-droplet-on:hover {
+  background: rgba(212,83,126,0.18);
+}
+/* predicted droplet — slightly pulsing to hint it's a forecast */
+.nutr-droplet-predicted svg path {
+  stroke-dasharray: 3 2;
 }
 
 /* ── Legend ── */
@@ -276,7 +321,8 @@
   gap: 12px;
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-top: 1px solid rgba(255,255,255,0.07);
+  align-items: center;
 }
 .nutr-leg-item {
   display: flex;
@@ -290,18 +336,24 @@
   width: 12px;
   height: 12px;
   border-radius: 3px;
-  border: 1.5px solid transparent;
 }
-.nutr-swatch-bulk    { background: rgba(87,165,255,0.5);  border-color: rgba(87,165,255,0.5); }
-.nutr-swatch-cut     { background: rgba(226,75,74,0.5);   border-color: rgba(226,75,74,0.5); }
-.nutr-swatch-maintain{ background: rgba(87,240,192,0.5);  border-color: rgba(87,240,192,0.5); }
-.nutr-swatch-period  { background: rgba(212,83,126,0.5);  border-color: rgba(212,83,126,0.5); }
-.nutr-swatch-predicted {
-  background: transparent;
-  border: 1.5px dashed rgba(212, 83, 126, 0.6);
+.nutr-swatch-bulk     { background: rgba(87,165,255,0.5); }
+.nutr-swatch-cut      { background: rgba(226,75,74,0.5); }
+.nutr-swatch-maintain { background: rgba(87,240,192,0.5); }
+
+/* ── Period stats bar ── */
+.nutr-period-stats-bar {
+  margin-top: 10px;
+  font-size: 0.73rem;
+  line-height: 1.55;
+  color: var(--muted);
+  padding: 8px 12px;
+  background: rgba(212,83,126,0.07);
+  border: 1px solid rgba(212,83,126,0.14);
+  border-radius: 12px;
 }
 
-/* ── Panel titles ── */
+/* ── Panel ── */
 .nutr-panel-title {
   font-size: 0.62rem;
   text-transform: uppercase;
@@ -311,24 +363,19 @@
   margin-bottom: 14px;
 }
 
-/* ── Selection box ── */
 .nutr-sel-box {
   font-size: 0.82rem;
   color: var(--muted);
   padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 12px;
   min-height: 36px;
   display: flex;
   align-items: center;
 }
-.nutr-sel-box strong {
-  color: var(--text);
-  font-weight: 700;
-}
+.nutr-sel-box strong { color: var(--text); font-weight: 700; }
 
-/* ── Fields ── */
 .nutr-field {
   display: flex;
   flex-direction: column;
@@ -343,12 +390,12 @@
   letter-spacing: 0.14em;
 }
 
-/* ── Segment control ── */
+/* Segment control */
 .nutr-seg {
   display: flex;
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255,255,255,0.1);
 }
 .nutr-seg-btn {
   flex: 1;
@@ -361,12 +408,12 @@
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.nutr-seg-bulk.nutr-seg-active    { background: rgba(87,165,255,0.18); color: #bcdcff; }
-.nutr-seg-cut.nutr-seg-active     { background: rgba(226,75,74,0.18);  color: #ffb8b8; }
-.nutr-seg-maintain.nutr-seg-active{ background: rgba(87,240,192,0.16); color: #b8e88a; }
+.nutr-seg-bulk.nutr-seg-active     { background: rgba(87,165,255,0.18); color: #bcdcff; }
+.nutr-seg-cut.nutr-seg-active      { background: rgba(226,75,74,0.18);  color: #ffb8b8; }
+.nutr-seg-maintain.nutr-seg-active { background: rgba(87,240,192,0.16); color: #b8e88a; }
 .nutr-seg-btn:not(.nutr-seg-active):hover { background: rgba(255,255,255,0.06); color: var(--text-soft); }
 
-/* ── Duration grid ── */
+/* Duration grid */
 .nutr-dur-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -376,8 +423,8 @@
   padding: 7px 0;
   font-size: 0.75rem;
   font-weight: 700;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 10px;
   color: var(--muted);
   cursor: pointer;
@@ -385,39 +432,39 @@
 }
 .nutr-dur-btn:hover { background: rgba(255,255,255,0.09); color: var(--text-soft); }
 .nutr-dur-active {
-  background: rgba(87, 165, 255, 0.16) !important;
-  border-color: rgba(87, 165, 255, 0.3) !important;
+  background: rgba(87,165,255,0.16) !important;
+  border-color: rgba(87,165,255,0.3) !important;
   color: #bcdcff !important;
 }
 
-/* ── Number input ── */
+/* Number input */
 .nutr-input {
   width: 100%;
   padding: 8px 12px;
   font-size: 0.84rem;
   font-weight: 600;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
   border-radius: 10px;
   color: var(--text);
   outline: none;
   transition: border-color 0.15s;
 }
-.nutr-input:focus { border-color: rgba(87, 165, 255, 0.4); }
+.nutr-input:focus { border-color: rgba(87,165,255,0.4); }
 
-/* ── Preview box ── */
+/* Preview box */
 .nutr-preview-box {
   font-size: 0.76rem;
   color: var(--muted);
   padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
   border-radius: 10px;
   margin-top: 6px;
   line-height: 1.5;
 }
 
-/* ── Action buttons ── */
+/* Action buttons */
 .nutr-apply-btn {
   width: 100%;
   margin-top: 10px;
@@ -428,28 +475,18 @@
   border-radius: 14px;
   cursor: pointer;
   border: none;
-  background: linear-gradient(
-    135deg,
-    #fff5b5 0%,
-    var(--gold) 14%,
-    #ffffff 30%,
-    #c8d9ff 54%,
-    #9ba8ff 80%,
-    #ffffff 100%
-  );
+  background: linear-gradient(135deg, #fff5b5 0%, var(--gold) 14%, #ffffff 30%, #c8d9ff 54%, #9ba8ff 80%, #ffffff 100%);
   color: #06101f;
-  box-shadow: 0 12px 28px rgba(255, 216, 77, 0.16);
+  box-shadow: 0 12px 28px rgba(255,216,77,0.16);
   transition: transform 0.16s, box-shadow 0.16s, filter 0.16s;
+  display: block;
 }
 .nutr-apply-btn:hover:not(:disabled) {
   transform: translateY(-2px);
   filter: brightness(1.04);
-  box-shadow: 0 18px 34px rgba(255, 216, 77, 0.2);
+  box-shadow: 0 18px 34px rgba(255,216,77,0.2);
 }
-.nutr-apply-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
+.nutr-apply-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .nutr-del-btn {
   width: 100%;
@@ -459,108 +496,23 @@
   font-weight: 700;
   border-radius: 12px;
   cursor: pointer;
-  background: rgba(226, 75, 74, 0.1);
-  border: 1px solid rgba(226, 75, 74, 0.24);
+  background: rgba(226,75,74,0.1);
+  border: 1px solid rgba(226,75,74,0.24);
   color: #ffb8b8;
   transition: background 0.15s, transform 0.15s;
 }
 .nutr-del-btn:hover {
-  background: rgba(226, 75, 74, 0.18);
+  background: rgba(226,75,74,0.18);
   transform: translateY(-1px);
-}
-
-/* ── Period toggle ── */
-.nutr-toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.nutr-toggle-label {
-  font-size: 0.84rem;
-  font-weight: 700;
-  color: var(--text-soft);
-}
-.nutr-toggle {
-  position: relative;
-  width: 40px;
-  height: 23px;
-  flex-shrink: 0;
-}
-.nutr-toggle input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-.nutr-tog-slider {
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
-  cursor: pointer;
-  transition: background 0.2s;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-.nutr-tog-slider::before {
-  content: '';
-  position: absolute;
-  width: 17px;
-  height: 17px;
-  border-radius: 50%;
-  left: 2px;
-  top: 2px;
-  background: white;
-  transition: transform 0.2s;
-}
-.nutr-toggle input:checked + .nutr-tog-slider {
-  background: rgba(212, 83, 126, 0.7);
-  border-color: rgba(212, 83, 126, 0.4);
-}
-.nutr-toggle input:checked + .nutr-tog-slider::before {
-  transform: translateX(17px);
-}
-
-/* ── Period panel ── */
-.nutr-period-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 10px;
-}
-.nutr-period-hint {
-  font-size: 0.76rem;
-  line-height: 1.6;
-  color: var(--muted);
-  padding: 9px 12px;
-  background: rgba(212, 83, 126, 0.08);
-  border: 1px solid rgba(212, 83, 126, 0.18);
-  border-radius: 12px;
-}
-.nutr-period-stats {
-  font-size: 0.75rem;
-  line-height: 1.6;
-  color: var(--muted);
-  padding: 9px 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 12px;
 }
 
 /* ── Responsive ── */
 @media (max-width: 820px) {
-  .nutr-body {
-    grid-template-columns: 1fr;
-  }
-  .nutr-sidebar {
-    order: -1;
-  }
+  .nutr-body { grid-template-columns: 1fr; }
+  .nutr-sidebar { order: -1; }
 }
-
-@media (max-width: 540px) {
-  .nutr-day {
-    height: 44px;
-  }
-  .nutr-day-tag {
-    display: none;
-  }
+@media (max-width: 480px) {
+  .nutr-day { height: 46px; }
+  .nutr-day-tag { display: none; }
+  .nutr-droplet { width: 15px; height: 15px; bottom: 2px; right: 2px; }
 }
