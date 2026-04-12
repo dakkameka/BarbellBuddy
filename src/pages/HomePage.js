@@ -47,7 +47,7 @@ function HomePage() {
               <div className="home-brand-orbit orbit-2" />
               <img
                 className="home-brand-mark"
-                src="/star-lifting.png"
+                src="/logo.png"
                 alt="Coach Nova star mascot"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
