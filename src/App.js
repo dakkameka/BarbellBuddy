@@ -16,10 +16,18 @@ const DEFAULT_ATHLETE = {
   bodyweight: 130,
   heightFt: 5,
   heightIn: 4,
+
   goal: 'strength',
   equipment: 'full gym',
+
   cycleTracking: false,
   considerations: '',
+
+  nutritionGuidance: true,
+  doesBulkCutCycles: true,
+  calorieTrackingStyle: 'light',
+  weightDirectionGoal: 'gain',
+  progressLogFrequency: 'weekly',
 };
 
 const DEFAULT_SCHEDULE = [
