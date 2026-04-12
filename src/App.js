@@ -8,9 +8,7 @@ import LiveWorkoutPage from './pages/LiveWorkoutPage';
 import WorkoutSummaryPage from './pages/WorkoutSummaryPage';
 import './styles/globals.css';
 
-const DEFAULT_NUTRITION = {
-  bulkCutBlocks: [],
-};
+
 
 const DEFAULT_ATHLETE = {
   firstName: 'Jane',
@@ -43,17 +41,7 @@ const DEFAULT_SCHEDULE = [
 ];
 
 const DEFAULT_NUTRITION = {
-  mode: 'build',
-  caloriesTarget: 2560,
-  proteinTarget: 130,
-  carbsTarget: 320,
-  fatsTarget: 70,
-  caloriesLogged: 0,
-  proteinLogged: 0,
-  carbsLogged: 0,
-  fatsLogged: 0,
-  aiAdvice:
-    'Hold a mild surplus this week. Keep protein steady and place more carbs around training so performance stays high.',
+  bulkCutBlocks: [],
 };
 
 const DEFAULT_PROGRESS = {
