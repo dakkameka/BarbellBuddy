@@ -61,15 +61,9 @@ function inferPeriods(markedKeys) {
 function computePeriodMeta(markedKeys) {
   const periods = inferPeriods(markedKeys);
   if (periods.length === 0) return { periods, avgCycle: 28, avgLen: 5 };
-
-  const avgLen =
-    periods.length === 0
-      ? 5
-      : Math.round(
-          periods.map((p) => p.length).reduce((s, l) => s + l, 0) /
-            periods.length
-        );
-
+  const avgLen = Math.round(
+    periods.map((p) => p.length).reduce((s, l) => s + l, 0) / periods.length
+  );
   let avgCycle = 28;
   if (periods.length >= 2) {
     const gaps = [];
@@ -98,7 +92,7 @@ function buildPredictedKeys(markedKeys) {
   return predicted;
 }
 
-/* ─── component ─── */
+/* ─── constants ─── */
 const DURATIONS = [
   { label: '2 wks', days: 14 },
   { label: '4 wks', days: 28 },
@@ -107,15 +101,43 @@ const DURATIONS = [
   { label: '12 wks', days: 84 },
   { label: 'Custom', days: 0 },
 ];
-
 const DAY_HEADERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-export default function NutritionPage({ athlete, nutrition, setNutrition }) {
+/* ─── Droplet SVG ─── */
+function DropletIcon({ filled, predicted }) {
+  const fill = filled
+    ? 'rgba(212,83,126,0.9)'
+    : 'none';
+  const stroke = filled
+    ? 'rgba(212,83,126,1)'
+    : predicted
+    ? 'rgba(212,83,126,0.45)'
+    : 'rgba(212,83,126,0.35)';
+  return (
+    <svg viewBox="0 0 12 14" width="10" height="10" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+      <path
+        d="M6 1 C6 1 1.5 6 1.5 9 C1.5 11.5 3.5 13 6 13 C8.5 13 10.5 11.5 10.5 9 C10.5 6 6 1 6 1Z"
+        fill={fill}
+        stroke={stroke}
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/* ─── main component ─── */
+export default function NutritionPage({ athlete, nutrition, setNutrition, goToScreen }) {
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     return d;
   }, []);
+
+  /* Gate: both flags must be true */
+  const nutritionEnabled = athlete?.nutritionGuidance && athlete?.doesBulkCutCycles;
+  /* Period tracking is automatic from profile — no toggle needed */
+  const trackPeriod = athlete?.cycleTracking === true;
 
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -123,12 +145,8 @@ export default function NutritionPage({ athlete, nutrition, setNutrition }) {
   const [activeType, setActiveType] = useState('bulk');
   const [activeDur, setActiveDur] = useState(28);
   const [customDays, setCustomDays] = useState(21);
-  const [trackPeriod, setTrackPeriod] = useState(
-    athlete?.cycleTracking ?? false
-  );
 
   const blocks = nutrition.bulkCutBlocks ?? [];
-  // markedPeriodDays stored as array of key strings in nutrition state
   const markedPeriodDays = useMemo(
     () => new Set(nutrition.periodDays ?? []),
     [nutrition.periodDays]
@@ -139,15 +157,9 @@ export default function NutritionPage({ athlete, nutrition, setNutrition }) {
     [trackPeriod, markedPeriodDays]
   );
 
-  const periodMeta = useMemo(
-    () => computePeriodMeta(markedPeriodDays),
-    [markedPeriodDays]
-  );
+  const periodMeta = useMemo(() => computePeriodMeta(markedPeriodDays), [markedPeriodDays]);
 
-  const cells = useMemo(
-    () => buildCells(viewYear, viewMonth),
-    [viewYear, viewMonth]
-  );
+  const cells = useMemo(() => buildCells(viewYear, viewMonth), [viewYear, viewMonth]);
 
   function blockAt(d) {
     const k = toKey(d);
@@ -182,23 +194,20 @@ export default function NutritionPage({ athlete, nutrition, setNutrition }) {
     else setViewMonth((m) => m + 1);
   }
 
+  /* clicking the day cell body selects it for cycle editing (future only) */
   function handleDayClick(date) {
-    const isPast = date < today;
-    const isToday = toKey(date) === toKey(today);
+    if (date < today) return;
+    setSelectedDate(date);
+  }
+
+  /* clicking the droplet toggles period for that day (past + today + future all ok) */
+  function handleDropletClick(e, date) {
+    e.stopPropagation();
     const key = toKey(date);
-
-    if (trackPeriod && (isPast || isToday)) {
-      // Toggle period day marking
-      const next = new Set(markedPeriodDays);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      setNutrition((prev) => ({ ...prev, periodDays: [...next] }));
-      return;
-    }
-
-    if (!isPast) {
-      setSelectedDate(date);
-    }
+    const next = new Set(markedPeriodDays);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setNutrition((prev) => ({ ...prev, periodDays: [...next] }));
   }
 
   function applyBlock() {
@@ -207,12 +216,8 @@ export default function NutritionPage({ athlete, nutrition, setNutrition }) {
     const startKey = toKey(selectedDate);
     const endKey = toKey(addDays(selectedDate, dur - 1));
     const nb = { type: activeType, start: startKey, end: endKey };
-    const filtered = blocks.filter(
-      (b) => nb.end < b.start || nb.start > b.end
-    );
-    const sorted = [...filtered, nb].sort((a, b) =>
-      a.start.localeCompare(b.start)
-    );
+    const filtered = blocks.filter((b) => nb.end < b.start || nb.start > b.end);
+    const sorted = [...filtered, nb].sort((a, b) => a.start.localeCompare(b.start));
     setNutrition((prev) => ({ ...prev, bulkCutBlocks: sorted }));
     setSelectedDate(null);
   }
@@ -229,163 +234,168 @@ export default function NutritionPage({ athlete, nutrition, setNutrition }) {
     setSelectedDate(null);
   }
 
-  const previewEnd =
-    selectedDate ? addDays(selectedDate, getDur() - 1) : null;
-
+  const previewEnd = selectedDate ? addDays(selectedDate, getDur() - 1) : null;
   const selectedBlock = selectedDate ? blockAt(selectedDate) : null;
+  const showPredictedLegend = trackPeriod && predictedPeriodKeys.size > 0;
 
-  // Build period stats string
   const periodStatsText = useMemo(() => {
+    if (!trackPeriod) return '';
     if (markedPeriodDays.size === 0)
-      return 'Tap any past day to mark it as a period day. Predictions appear after your first entry.';
+      return 'Tap the droplet on any day to log your period. Predictions appear automatically.';
     const { periods, avgCycle, avgLen } = periodMeta;
-    const lastStart =
-      periods.length > 0
-        ? fromKey(periods[periods.length - 1][0])
-        : null;
+    const lastStart = periods.length > 0 ? fromKey(periods[periods.length - 1][0]) : null;
     const nextPredicted = lastStart ? addDays(lastStart, avgCycle) : null;
     return (
-      `${markedPeriodDays.size} day${markedPeriodDays.size !== 1 ? 's' : ''} logged across ` +
-      `${periods.length} period${periods.length !== 1 ? 's' : ''}. ` +
-      `Avg cycle ${avgCycle}d · avg length ${avgLen}d. ` +
-      (nextPredicted ? `Next predicted: ${fmtShort(nextPredicted)}.` : '')
+      `${markedPeriodDays.size} day${markedPeriodDays.size !== 1 ? 's' : ''} logged · ` +
+      `${periods.length} period${periods.length !== 1 ? 's' : ''} · ` +
+      `avg cycle ${avgCycle}d · avg length ${avgLen}d` +
+      (nextPredicted ? ` · next ~${fmtShort(nextPredicted)}` : '')
     );
-  }, [markedPeriodDays, periodMeta]);
+  }, [trackPeriod, markedPeriodDays, periodMeta]);
 
-  const showPredictedLegend =
-    trackPeriod && predictedPeriodKeys.size > 0;
+  /* ── Disabled state ── */
+  if (!nutritionEnabled) {
+    return (
+      <div className="screen nutrition-screen">
+        <div className="nutr-disabled-wrap">
+          <div className="nutr-disabled-card">
+            <div className="nutr-disabled-icon">🥗</div>
+            <h2 className="nutr-disabled-title">Nutrition tracking is off</h2>
+            <p className="nutr-disabled-body">
+              Enable <strong>Nutrition Guidance</strong> and{' '}
+              <strong>Bulk / Cut Cycles</strong> in your profile to use this page.
+            </p>
+            <button
+              className="nutr-apply-btn"
+              style={{ maxWidth: 220, margin: '0 auto' }}
+              onClick={() => goToScreen?.('profile')}
+            >
+              Go to Profile
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
+  /* ── Main page ── */
   return (
     <div className="screen nutrition-screen">
       <div className="nutr-shell">
 
-        {/* ── Current cycle banner ── */}
+        {/* Banner */}
         <div className="nutr-banner">
-          <div className="nutr-banner-left">
-            <div className="nutr-banner-label">Current cycle</div>
-            {currentCycleInfo ? (
-              <>
-                <div className={`nutr-cycle-pill nutr-pill-${currentCycleInfo.type}`}>
-                  <span className={`nutr-dot nutr-dot-${currentCycleInfo.type}`} />
-                  {currentCycleInfo.type.charAt(0).toUpperCase() +
-                    currentCycleInfo.type.slice(1)}{' '}
-                  — week {currentCycleInfo.week} of {currentCycleInfo.totalWeeks}
-                </div>
-                <div className="nutr-prog-wrap">
-                  <div
-                    className={`nutr-prog-fill nutr-prog-${currentCycleInfo.type}`}
-                    style={{ width: `${currentCycleInfo.pct}%` }}
-                  />
-                </div>
-                <div className="nutr-banner-meta">
-                  <span>Started {fmtShort(currentCycleInfo.start)}</span>
-                  <span>
-                    {currentCycleInfo.pct}% complete · ends{' '}
-                    {fmtShort(currentCycleInfo.end)}
-                  </span>
-                </div>
-              </>
-            ) : (
-              <div className="nutr-cycle-pill nutr-pill-none">No active cycle</div>
-            )}
-          </div>
+          <div className="nutr-banner-label">Current cycle</div>
+          {currentCycleInfo ? (
+            <>
+              <div className={`nutr-cycle-pill nutr-pill-${currentCycleInfo.type}`}>
+                <span className={`nutr-dot nutr-dot-${currentCycleInfo.type}`} />
+                {currentCycleInfo.type.charAt(0).toUpperCase() + currentCycleInfo.type.slice(1)}
+                {' '}— week {currentCycleInfo.week} of {currentCycleInfo.totalWeeks}
+              </div>
+              <div className="nutr-prog-wrap">
+                <div
+                  className={`nutr-prog-fill nutr-prog-${currentCycleInfo.type}`}
+                  style={{ width: `${currentCycleInfo.pct}%` }}
+                />
+              </div>
+              <div className="nutr-banner-meta">
+                <span>Started {fmtShort(currentCycleInfo.start)}</span>
+                <span>{currentCycleInfo.pct}% complete · ends {fmtShort(currentCycleInfo.end)}</span>
+              </div>
+            </>
+          ) : (
+            <div className="nutr-cycle-pill nutr-pill-none">No active cycle — click a future date to add one</div>
+          )}
         </div>
 
         <div className="nutr-body">
-          {/* ── Calendar ── */}
+
+          {/* Calendar */}
           <div className="nutr-cal-card">
             <div className="nutr-cal-nav">
               <button className="nutr-nav-btn" onClick={prevMonth}>←</button>
-              <span className="nutr-cal-month">
-                {fmtMonthYear(viewYear, viewMonth)}
-              </span>
+              <span className="nutr-cal-month">{fmtMonthYear(viewYear, viewMonth)}</span>
               <button className="nutr-nav-btn" onClick={nextMonth}>→</button>
             </div>
 
             <div className="nutr-cal-dh">
-              {DAY_HEADERS.map((h) => (
-                <div key={h}>{h}</div>
-              ))}
+              {DAY_HEADERS.map((h) => <div key={h}>{h}</div>)}
             </div>
 
             <div className="nutr-cal-grid">
               {cells.map((date, i) => {
-                if (!date) return <div key={`e-${i}`} />;
+                if (!date) return <div key={`e-${i}`} className="nutr-day-empty" />;
 
                 const isPast = date < today;
                 const isToday = toKey(date) === toKey(today);
                 const key = toKey(date);
                 const b = blockAt(date);
                 const isActualPeriod = trackPeriod && markedPeriodDays.has(key);
-                const isPredicted = trackPeriod && predictedPeriodKeys.has(key);
+                const isPredicted = trackPeriod && !isActualPeriod && predictedPeriodKeys.has(key);
                 const isSelected = selectedDate && toKey(date) === toKey(selectedDate);
 
                 let cellClass = 'nutr-day';
                 if (isPast) cellClass += ' nutr-day-past';
-                if (isActualPeriod) cellClass += ' nutr-day-period';
-                else if (isPredicted) cellClass += ' nutr-day-predicted';
-                else if (b) cellClass += ` nutr-day-${b.type}`;
+                if (b) cellClass += ` nutr-day-${b.type}`;
                 if (isSelected) cellClass += ' nutr-day-selected';
                 if (isToday) cellClass += ' nutr-day-today';
 
-                const clickable =
-                  !isPast || (trackPeriod && (isPast || isToday));
-
                 return (
-                  <button
+                  <div
                     key={key}
                     className={cellClass}
                     onClick={() => handleDayClick(date)}
-                    disabled={!clickable}
+                    role="button"
+                    tabIndex={isPast ? -1 : 0}
+                    onKeyDown={(e) => e.key === 'Enter' && !isPast && handleDayClick(date)}
                   >
                     <span className="nutr-day-num">{date.getDate()}</span>
-                    {isActualPeriod && (
-                      <span className="nutr-day-tag">period</span>
-                    )}
-                    {isPredicted && !isActualPeriod && (
-                      <span className="nutr-day-tag">pred.</span>
-                    )}
-                    {!isActualPeriod && !isPredicted && b && (
-                      <span className="nutr-day-tag">{b.type}</span>
-                    )}
+                    {b && <span className="nutr-day-tag">{b.type}</span>}
                     {isToday && <span className="nutr-today-dot" />}
-                  </button>
+
+                    {/* Droplet — shown when cycleTracking is on */}
+                    {trackPeriod && (
+                      <button
+                        className={[
+                          'nutr-droplet',
+                          isActualPeriod ? 'nutr-droplet-on' : '',
+                          isPredicted ? 'nutr-droplet-predicted' : '',
+                        ].join(' ').trim()}
+                        onClick={(e) => handleDropletClick(e, date)}
+                        title={isActualPeriod ? 'Remove period log' : 'Log period day'}
+                        tabIndex={-1}
+                        aria-label={isActualPeriod ? 'Remove period log' : 'Log period day'}
+                      >
+                        <DropletIcon filled={isActualPeriod} predicted={isPredicted} />
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>
 
+            {/* Legend */}
             <div className="nutr-legend">
-              <div className="nutr-leg-item">
-                <div className="nutr-leg-swatch nutr-swatch-bulk" />
-                Bulk
-              </div>
-              <div className="nutr-leg-item">
-                <div className="nutr-leg-swatch nutr-swatch-cut" />
-                Cut
-              </div>
-              <div className="nutr-leg-item">
-                <div className="nutr-leg-swatch nutr-swatch-maintain" />
-                Maintain
-              </div>
+              <div className="nutr-leg-item"><div className="nutr-leg-swatch nutr-swatch-bulk" />Bulk</div>
+              <div className="nutr-leg-item"><div className="nutr-leg-swatch nutr-swatch-cut" />Cut</div>
+              <div className="nutr-leg-item"><div className="nutr-leg-swatch nutr-swatch-maintain" />Maintain</div>
               {trackPeriod && (
-                <div className="nutr-leg-item">
-                  <div className="nutr-leg-swatch nutr-swatch-period" />
-                  Period
-                </div>
+                <div className="nutr-leg-item"><DropletIcon filled /><span style={{ marginLeft: 4 }}>Period</span></div>
               )}
               {showPredictedLegend && (
-                <div className="nutr-leg-item">
-                  <div className="nutr-leg-swatch nutr-swatch-predicted" />
-                  Predicted
-                </div>
+                <div className="nutr-leg-item"><DropletIcon predicted /><span style={{ marginLeft: 4 }}>Predicted</span></div>
               )}
             </div>
+
+            {/* Period stats — only when tracking */}
+            {trackPeriod && (
+              <div className="nutr-period-stats-bar">{periodStatsText}</div>
+            )}
           </div>
 
-          {/* ── Right panel ── */}
+          {/* Sidebar */}
           <div className="nutr-sidebar">
-
-            {/* Cycle editor */}
             <div className="nutr-panel">
               <div className="nutr-panel-title">Cycle editor</div>
 
@@ -434,9 +444,7 @@ export default function NutritionPage({ athlete, nutrition, setNutrition }) {
                     min={7}
                     max={180}
                     value={customDays}
-                    onChange={(e) =>
-                      setCustomDays(Math.max(7, parseInt(e.target.value) || 7))
-                    }
+                    onChange={(e) => setCustomDays(Math.max(7, parseInt(e.target.value) || 7))}
                   />
                 </div>
               )}
@@ -447,11 +455,7 @@ export default function NutritionPage({ athlete, nutrition, setNutrition }) {
                   : 'Select a start date on the calendar'}
               </div>
 
-              <button
-                className="nutr-apply-btn"
-                onClick={applyBlock}
-                disabled={!selectedDate}
-              >
+              <button className="nutr-apply-btn" onClick={applyBlock} disabled={!selectedDate}>
                 Apply cycle
               </button>
 
@@ -461,35 +465,6 @@ export default function NutritionPage({ athlete, nutrition, setNutrition }) {
                 </button>
               )}
             </div>
-
-            {/* Period tracker */}
-            {(athlete?.cycleTracking !== false) && (
-              <div className="nutr-panel">
-                <div className="nutr-panel-title">Period tracker</div>
-
-                <div className="nutr-toggle-row">
-                  <span className="nutr-toggle-label">Track period</span>
-                  <label className="nutr-toggle">
-                    <input
-                      type="checkbox"
-                      checked={trackPeriod}
-                      onChange={(e) => setTrackPeriod(e.target.checked)}
-                    />
-                    <span className="nutr-tog-slider" />
-                  </label>
-                </div>
-
-                {trackPeriod && (
-                  <div className="nutr-period-panel">
-                    <div className="nutr-period-hint">
-                      Tap any past or current calendar day to mark it as a
-                      period day. Predictions update automatically.
-                    </div>
-                    <div className="nutr-period-stats">{periodStatsText}</div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
       </div>
