@@ -4,14 +4,12 @@ import { getPostSessionDebrief, getLiveCoachMessage, getCalendarAdjustment, getN
 
 import { useState } from 'react';
 
-// PAGES
+import { useState } from 'react';
 import HomePage from './pages/HomePage';
 import CalendarPage from './pages/CalendarPage';
 import NutritionPage from './pages/NutritionPage';
 import ChatPage from './pages/ChatPage';
 import ProfilePage from './pages/ProfilePage';
-
-// STYLES
 import './styles/globals.css';
 
 function App() {
@@ -19,32 +17,32 @@ function App() {
 
   return (
     <div className="app">
-
-      {/* -------- NAV (TEMP SIMPLE) -------- */}
       <div className="topnav">
         <div className="logo">
-          ⭐ <span>Coach Nova</span>
+          <span>Coach Nova</span>
         </div>
 
         <div className="nav-right">
-          <button onClick={() => setScreen('home')}>Home</button>
-          <button onClick={() => setScreen('calendar')}>Calendar</button>
-          <button onClick={() => setScreen('nutrition')}>Nutrition</button>
-          <button onClick={() => setScreen('chat')}>Coach</button>
-          <button onClick={() => setScreen('profile')}>Profile</button>
+          <button type="button" onClick={() => setScreen('home')}>Home</button>
+          <button type="button" onClick={() => setScreen('calendar')}>Calendar</button>
+          <button type="button" onClick={() => setScreen('nutrition')}>Nutrition</button>
+          <button type="button" onClick={() => setScreen('chat')}>Coach</button>
+          <button type="button" onClick={() => setScreen('profile')}>Profile</button>
         </div>
       </div>
 
-      {/* -------- PAGE RENDER -------- */}
       <div className="main-content">
         {screen === 'home' && <HomePage />}
-
         {screen === 'calendar' && <CalendarPage />}
         {screen === 'nutrition' && <NutritionPage />}
         {screen === 'chat' && <ChatPage />}
         {screen === 'profile' && <ProfilePage />}
       </div>
+    </div>
+  );
+}
 
+export default App;
     </div>
   );
 }
