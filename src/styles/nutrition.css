@@ -1,0 +1,48 @@
+.nutrition-shell {
+  width: min(900px,100%);
+  margin: 0 auto;
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.glass-panel {
+  border-radius: 20px;
+  padding: 16px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.calendar-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7,1fr);
+  gap: 6px;
+}
+
+.day {
+  height: 60px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  border: none;
+  color: white;
+  cursor: pointer;
+}
+
+.day.past {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.day.bulk {
+  background: rgba(100,200,255,0.4);
+}
+
+.day.cut {
+  background: rgba(255,120,120,0.4);
+}
