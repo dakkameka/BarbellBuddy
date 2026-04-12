@@ -1,19 +1,5 @@
 import '../styles/home.css';
 
-const weekCards = [
-  { day: 'Today', date: 'Apr 11', lift: 'Lower Power', active: true },
-  { day: 'Sun', date: 'Apr 12', lift: 'Recovery' },
-  { day: 'Mon', date: 'Apr 13', lift: 'Bench Focus' },
-  { day: 'Tue', date: 'Apr 14', lift: 'Squat Volume' },
-  { day: 'Wed', date: 'Apr 15', lift: 'Upper Pull' },
-];
-
-const progressRows = [
-  { name: 'Deadlift', value: '+18 lb', points: [40, 52, 58, 64, 72, 78] },
-  { name: 'Squat', value: '+12 lb', points: [38, 44, 49, 57, 60, 68] },
-  { name: 'Bench', value: '+7 lb', points: [35, 39, 43, 45, 50, 54] },
-];
-
 function Sparkline({ points }) {
   const width = 120;
   const height = 42;
@@ -41,7 +27,14 @@ function Sparkline({ points }) {
   );
 }
 
-function HomePage() {
+function HomePage({ summary, athlete, schedule, nutrition, progress, startTodaysWorkout }) {
+  const weekCards = schedule || [];
+  const progressRows = [
+    { name: 'Deadlift', value: `${progress.deadlift[progress.deadlift.length - 1]} lb`, points: progress.deadlift },
+    { name: 'Squat', value: `${progress.squat[progress.squat.length - 1]} lb`, points: progress.squat },
+    { name: 'Bench', value: `${progress.bench[progress.bench.length - 1]} lb`, points: progress.bench },
+  ];
+
   return (
     <div className="screen home-screen">
       <div className="home-shell">
@@ -68,7 +61,9 @@ function HomePage() {
                 <div className="home-kicker">Upcoming</div>
                 <h2 className="home-section-title">Training week</h2>
               </div>
-              <button className="home-ghost-btn" type="button">See all</button>
+              <button className="home-ghost-btn" type="button">
+                {athlete.firstName} {athlete.lastName}
+              </button>
             </div>
 
             <div className="home-week-strip">
@@ -77,12 +72,12 @@ function HomePage() {
               <div className="home-week-cards">
                 {weekCards.map((card) => (
                   <div
-                    key={`${card.day}-${card.date}`}
-                    className={`home-week-card ${card.active ? 'is-active' : ''}`}
+                    key={card.id}
+                    className={`home-week-card ${card.status === 'active' ? 'is-active' : ''}`}
                   >
                     <div className="home-week-day">{card.day}</div>
                     <div className="home-week-date">{card.date}</div>
-                    <div className="home-week-lift">{card.lift}</div>
+                    <div className="home-week-lift">{card.title}</div>
                   </div>
                 ))}
               </div>
@@ -100,15 +95,16 @@ function HomePage() {
 
             <div className="home-hero-copy">
               <h2 className="home-hero-title">
-                You are primed for a stronger lower-body session today.
+                Start today’s workout when you’re ready.
               </h2>
               <p className="home-hero-text">
-                Bar speed has held steady across your last three lower sessions, so today should favor
-                crisp squat volume over grinding top singles.
+                {summary.topInsight}
               </p>
             </div>
 
-            <button className="home-pill-btn" type="button">more</button>
+            <button className="home-start-btn" type="button" onClick={startTodaysWorkout}>
+              Start today&apos;s workout
+            </button>
           </div>
         </section>
 
@@ -124,9 +120,11 @@ function HomePage() {
             <div className="home-phase-wheel-wrap">
               <div className="home-phase-wheel">
                 <div className="home-phase-center">
-                  <div className="home-phase-center-top">Phase 2</div>
-                  <div className="home-phase-center-main">Power</div>
-                  <div className="home-phase-center-sub">3 weeks left</div>
+                  <div className="home-phase-center-top">Phase</div>
+                  <div className="home-phase-center-main">{athlete.phase}</div>
+                  <div className="home-phase-center-sub">
+                    Week {athlete.phaseWeek} / {athlete.phaseTotalWeeks}
+                  </div>
                 </div>
 
                 <div className="home-phase-node node-top">Squat</div>
@@ -145,14 +143,15 @@ function HomePage() {
               </div>
             </div>
 
-            <div className="home-mode-pill">Building</div>
+            <div className="home-mode-pill">{nutrition.mode}</div>
 
             <p className="home-card-body">
-              Hold a mild surplus this week. Keep protein steady and bias carbs around training so
-              performance stays high without making the plan feel heavy.
+              {nutrition.aiAdvice}
             </p>
 
-            <button className="home-ghost-btn bottom-btn" type="button">more</button>
+            <button className="home-ghost-btn bottom-btn" type="button">
+              {nutrition.caloriesTarget} kcal target
+            </button>
           </div>
 
           <div className="home-progress glass-panel">
