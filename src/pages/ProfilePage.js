@@ -1,9 +1,25 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import '../styles/profile.css';
 
+function FieldLabel({ children }) {
+  return <label className="profile-label">{children}</label>;
+}
+
 function ProfilePage({ athlete, setAthlete, goBack }) {
-  const [form, setForm] = useState(athlete);
+  const [form, setForm] = useState({
+    ...athlete,
+    cycleTracking: athlete.cycleTracking ?? false,
+    considerations: athlete.considerations ?? '',
+  });
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setForm({
+      ...athlete,
+      cycleTracking: athlete.cycleTracking ?? false,
+      considerations: athlete.considerations ?? '',
+    });
+  }, [athlete]);
 
   const handleChange = (key, value) => {
     setForm((prev) => ({
@@ -13,177 +29,187 @@ function ProfilePage({ athlete, setAthlete, goBack }) {
   };
 
   const handleSave = () => {
-    setAthlete(form);
+    const cleaned = {
+      ...form,
+      age: Number(form.age) || 0,
+      bodyweight: Number(form.bodyweight) || 0,
+      heightFt: Number(form.heightFt) || 0,
+      heightIn: Number(form.heightIn) || 0,
+    };
+
+    if (cleaned.gender !== 'female') {
+      cleaned.cycleTracking = false;
+    }
+
+    setAthlete(cleaned);
     setSaved(true);
 
     setTimeout(() => {
       setSaved(false);
-    }, 1500);
+    }, 1600);
   };
 
   return (
     <div className="screen profile-screen">
       <div className="profile-shell">
-
-        {/* HEADER */}
         <div className="profile-header glass-panel">
           <h1>Profile</h1>
-          <p>Set up your training identity and baseline</p>
+          <p>Tell Coach Nova who you are and what training needs to account for.</p>
         </div>
 
-        {/* IDENTITY */}
         <div className="profile-section glass-panel">
           <h2>Identity</h2>
 
           <div className="profile-grid">
-            <input
-              value={form.firstName}
-              onChange={(e) => handleChange('firstName', e.target.value)}
-              placeholder="First name"
-            />
+            <div className="profile-field">
+              <FieldLabel>First name</FieldLabel>
+              <input
+                value={form.firstName || ''}
+                onChange={(e) => handleChange('firstName', e.target.value)}
+                placeholder="First name"
+              />
+            </div>
 
-            <input
-              value={form.lastName}
-              onChange={(e) => handleChange('lastName', e.target.value)}
-              placeholder="Last name"
-            />
+            <div className="profile-field">
+              <FieldLabel>Last name</FieldLabel>
+              <input
+                value={form.lastName || ''}
+                onChange={(e) => handleChange('lastName', e.target.value)}
+                placeholder="Last name"
+              />
+            </div>
 
-            <input
-              type="number"
-              value={form.age}
-              onChange={(e) => handleChange('age', Number(e.target.value))}
-              placeholder="Age"
-            />
+            <div className="profile-field">
+              <FieldLabel>Age</FieldLabel>
+              <input
+                type="number"
+                value={form.age ?? ''}
+                onChange={(e) => handleChange('age', e.target.value)}
+                placeholder="Age"
+              />
+            </div>
 
-            <select
-              value={form.gender}
-              onChange={(e) => handleChange('gender', e.target.value)}
-            >
-              <option value="female">Female</option>
-              <option value="male">Male</option>
-            </select>
+            <div className="profile-field">
+              <FieldLabel>Sex</FieldLabel>
+              <select
+                value={form.gender || 'female'}
+                onChange={(e) => handleChange('gender', e.target.value)}
+              >
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+              </select>
+            </div>
           </div>
+
+          {form.gender === 'female' && (
+            <div className="profile-toggle-row">
+              <button
+                type="button"
+                className={`profile-check-toggle ${form.cycleTracking ? 'is-on' : ''}`}
+                onClick={() => handleChange('cycleTracking', !form.cycleTracking)}
+                aria-pressed={form.cycleTracking}
+              >
+                <span className="profile-check-box">{form.cycleTracking ? '✓' : ''}</span>
+                <span>Optimize your training plan to your menstrual cycle</span>
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* BODY */}
         <div className="profile-section glass-panel">
-          <h2>Body Metrics</h2>
+          <h2>Body metrics</h2>
 
           <div className="profile-grid">
-            <input
-              type="number"
-              value={form.bodyweight}
-              onChange={(e) => handleChange('bodyweight', Number(e.target.value))}
-              placeholder="Bodyweight (lb)"
-            />
+            <div className="profile-field">
+              <FieldLabel>Height (ft)</FieldLabel>
+              <input
+                type="number"
+                value={form.heightFt ?? ''}
+                onChange={(e) => handleChange('heightFt', e.target.value)}
+                placeholder="Height (ft)"
+              />
+            </div>
 
-            <input
-              type="number"
-              value={form.heightFt}
-              onChange={(e) => handleChange('heightFt', Number(e.target.value))}
-              placeholder="Height (ft)"
-            />
+            <div className="profile-field">
+              <FieldLabel>Height (in)</FieldLabel>
+              <input
+                type="number"
+                value={form.heightIn ?? ''}
+                onChange={(e) => handleChange('heightIn', e.target.value)}
+                placeholder="Height (in)"
+              />
+            </div>
 
-            <input
-              type="number"
-              value={form.heightIn}
-              onChange={(e) => handleChange('heightIn', Number(e.target.value))}
-              placeholder="Height (in)"
-            />
+            <div className="profile-field profile-field-full">
+              <FieldLabel>Bodyweight (lb)</FieldLabel>
+              <input
+                type="number"
+                value={form.bodyweight ?? ''}
+                onChange={(e) => handleChange('bodyweight', e.target.value)}
+                placeholder="Bodyweight (lb)"
+              />
+            </div>
           </div>
         </div>
 
-        {/* TRAINING */}
         <div className="profile-section glass-panel">
-          <h2>Training Context</h2>
+          <h2>Training context</h2>
 
           <div className="profile-grid">
-            <select
-              value={form.goal}
-              onChange={(e) => handleChange('goal', e.target.value)}
-            >
-              <option value="strength">Strength</option>
-              <option value="hypertrophy">Hypertrophy</option>
-              <option value="general">General Fitness</option>
-            </select>
+            <div className="profile-field">
+              <FieldLabel>Main goal</FieldLabel>
+              <select
+                value={form.goal || 'strength'}
+                onChange={(e) => handleChange('goal', e.target.value)}
+              >
+                <option value="strength">Strength</option>
+                <option value="hypertrophy">Muscle growth</option>
+                <option value="general">General fitness</option>
+                <option value="fat_loss">Fat loss</option>
+                <option value="performance">Sport performance</option>
+              </select>
+            </div>
 
-            <select
-              value={form.phase}
-              onChange={(e) => handleChange('phase', e.target.value)}
-            >
-              <option value="build">Build</option>
-              <option value="cut">Cut</option>
-              <option value="maintain">Maintain</option>
-            </select>
-
-            <input
-              type="number"
-              value={form.phaseWeek}
-              onChange={(e) => handleChange('phaseWeek', Number(e.target.value))}
-              placeholder="Phase week"
-            />
-
-            <input
-              type="number"
-              value={form.phaseTotalWeeks}
-              onChange={(e) => handleChange('phaseTotalWeeks', Number(e.target.value))}
-              placeholder="Total weeks"
-            />
-
-            <select
-              value={form.equipment}
-              onChange={(e) => handleChange('equipment', e.target.value)}
-            >
-              <option value="full gym">Full Gym</option>
-              <option value="dumbbells">Dumbbells</option>
-              <option value="bodyweight">Bodyweight</option>
-            </select>
+            <div className="profile-field">
+              <FieldLabel>Available equipment</FieldLabel>
+              <select
+                value={form.equipment || 'full gym'}
+                onChange={(e) => handleChange('equipment', e.target.value)}
+              >
+                <option value="full gym">Full gym</option>
+                <option value="barbell + rack">Barbell + rack</option>
+                <option value="dumbbells">Dumbbells</option>
+                <option value="bodyweight">Bodyweight only</option>
+              </select>
+            </div>
           </div>
         </div>
 
-        {/* STRENGTH */}
         <div className="profile-section glass-panel">
-          <h2>Strength (1RM)</h2>
+          <h2>Considerations</h2>
 
-          <div className="profile-grid">
-            <input
-              type="number"
-              value={form.squat1RM}
-              onChange={(e) => handleChange('squat1RM', Number(e.target.value))}
-              placeholder="Squat"
-            />
+          <p className="profile-help-text">
+            Any considerations such as holidays, specific sports, injuries, or specific training goals
+            (ie supplementing a marathon, military fitness test, cross fit, etc)?
+          </p>
 
-            <input
-              type="number"
-              value={form.bench1RM}
-              onChange={(e) => handleChange('bench1RM', Number(e.target.value))}
-              placeholder="Bench"
-            />
-
-            <input
-              type="number"
-              value={form.deadlift1RM}
-              onChange={(e) => handleChange('deadlift1RM', Number(e.target.value))}
-              placeholder="Deadlift"
-            />
-
-            <input
-              type="number"
-              value={form.ohp1RM}
-              onChange={(e) => handleChange('ohp1RM', Number(e.target.value))}
-              placeholder="OHP"
+          <div className="profile-field">
+            <textarea
+              value={form.considerations || ''}
+              onChange={(e) => handleChange('considerations', e.target.value)}
+              placeholder="Examples: recovering from shoulder irritation, supplementing marathon training, preparing for a military fitness test, traveling for two weeks in June..."
+              rows={7}
             />
           </div>
         </div>
 
-        {/* ACTIONS */}
         <div className="profile-actions">
-          <button onClick={goBack} className="ghost-btn">
+          <button type="button" onClick={goBack} className="ghost-btn">
             Back
           </button>
 
-          <button onClick={handleSave} className="primary-btn">
-            Save Profile
+          <button type="button" onClick={handleSave} className="primary-btn">
+            Save profile
           </button>
         </div>
 
