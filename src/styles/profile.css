@@ -266,3 +266,17 @@
 .profile-grid-nutrition {
   margin-top: 6px;
 }
+
+/* Fix dropdown menu colors */
+.profile-grid select,
+.profile-field select {
+  background-color: rgba(20, 25, 45, 0.95);
+  color: rgba(255,255,255,0.95);
+}
+
+/* This controls the actual dropdown options */
+.profile-grid select option,
+.profile-field select option {
+  background-color: #0d1630;
+  color: white;
+}
