@@ -1,12 +1,11 @@
-
 import '../styles/home.css';
 
 const weekCards = [
-  { day: 'Today', date: 'Apr 11', lift: 'Lower Power', tag: 'primary', active: true },
-  { day: 'Sun', date: 'Apr 12', lift: 'Recovery', tag: 'soft' },
-  { day: 'Mon', date: 'Apr 13', lift: 'Bench Focus', tag: 'soft' },
-  { day: 'Tue', date: 'Apr 14', lift: 'Squat Volume', tag: 'soft' },
-  { day: 'Wed', date: 'Apr 15', lift: 'Upper Pull', tag: 'soft' },
+  { day: 'Today', date: 'Apr 11', lift: 'Lower Power', active: true },
+  { day: 'Sun', date: 'Apr 12', lift: 'Recovery' },
+  { day: 'Mon', date: 'Apr 13', lift: 'Bench Focus' },
+  { day: 'Tue', date: 'Apr 14', lift: 'Squat Volume' },
+  { day: 'Wed', date: 'Apr 15', lift: 'Upper Pull' },
 ];
 
 const progressRows = [
@@ -30,7 +29,14 @@ function Sparkline({ points }) {
 
   return (
     <svg className="home-sparkline" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
-      <polyline points={coords.join(' ')} fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+      <polyline
+        points={coords.join(' ')}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -39,18 +45,11 @@ function HomePage() {
   return (
     <div className="screen home-screen">
       <div className="home-shell">
-
         <section className="home-top-row">
           <div className="home-brand glass-panel">
             <div className="home-brand-mark-wrap">
               <div className="home-brand-orbit orbit-1" />
               <div className="home-brand-orbit orbit-2" />
-              <img
-                className="home-brand-mark"
-                src="/logo.png"
-                alt="Coach Nova star mascot"
-                onError={(e) => { e.currentTarget.style.display = 'none'; }}
-              />
               <div className="home-brand-fallback">★</div>
             </div>
 
@@ -73,7 +72,7 @@ function HomePage() {
             </div>
 
             <div className="home-week-strip">
-              <button className="home-strip-arrow" type="button" aria-label="Previous">‹</button>
+              <button className="home-strip-arrow" type="button">‹</button>
 
               <div className="home-week-cards">
                 {weekCards.map((card) => (
@@ -88,7 +87,7 @@ function HomePage() {
                 ))}
               </div>
 
-              <button className="home-strip-arrow" type="button" aria-label="Next">›</button>
+              <button className="home-strip-arrow" type="button">›</button>
             </div>
           </div>
         </section>
@@ -109,9 +108,7 @@ function HomePage() {
               </p>
             </div>
 
-            <button className="home-pill-btn" type="button">
-              more
-            </button>
+            <button className="home-pill-btn" type="button">more</button>
           </div>
         </section>
 
@@ -155,9 +152,7 @@ function HomePage() {
               performance stays high without making the plan feel heavy.
             </p>
 
-            <button className="home-ghost-btn bottom-btn" type="button">
-              more
-            </button>
+            <button className="home-ghost-btn bottom-btn" type="button">more</button>
           </div>
 
           <div className="home-progress glass-panel">
@@ -181,7 +176,6 @@ function HomePage() {
             </div>
           </div>
         </section>
-
       </div>
     </div>
   );
