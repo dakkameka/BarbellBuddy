@@ -154,7 +154,8 @@
 
 .home-ghost-btn,
 .home-pill-btn,
-.home-strip-arrow {
+.home-strip-arrow,
+.home-start-btn {
   border: 1px solid rgba(255,255,255,0.1);
   background: rgba(255,255,255,0.06);
   color: rgba(255,255,255,0.82);
@@ -166,7 +167,8 @@
 
 .home-ghost-btn:hover,
 .home-pill-btn:hover,
-.home-strip-arrow:hover {
+.home-strip-arrow:hover,
+.home-start-btn:hover {
   background: rgba(255,255,255,0.1);
   transform: translateY(-1px);
 }
@@ -177,6 +179,16 @@
   border-radius: 999px;
   font-size: 13px;
   font-weight: 600;
+}
+
+.home-start-btn {
+  align-self: start;
+  min-height: 52px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.96);
 }
 
 .home-week-strip {
@@ -375,6 +387,7 @@
   color: rgba(255,255,255,0.96);
   font-weight: 700;
   letter-spacing: -0.05em;
+  text-transform: capitalize;
 }
 
 .home-phase-center-sub {
@@ -437,6 +450,7 @@
   color: rgba(255,255,255,0.92);
   font-size: 14px;
   font-weight: 700;
+  text-transform: capitalize;
 }
 
 .home-card-body {
@@ -522,7 +536,8 @@
     align-items: start;
   }
 
-  .home-pill-btn {
+  .home-pill-btn,
+  .home-start-btn {
     justify-self: start;
   }
 
