@@ -17,14 +17,9 @@ const DEFAULT_ATHLETE = {
   heightFt: 5,
   heightIn: 4,
   goal: 'strength',
-  phase: 'build',
-  phaseWeek: 1,
-  phaseTotalWeeks: 8,
   equipment: 'full gym',
-  squat1RM: 225,
-  bench1RM: 135,
-  deadlift1RM: 275,
-  ohp1RM: 95,
+  cycleTracking: false,
+  considerations: '',
 };
 
 const DEFAULT_SCHEDULE = [
