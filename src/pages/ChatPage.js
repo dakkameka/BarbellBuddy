@@ -8,11 +8,9 @@ function buildSystemPrompt({ athlete, schedule, nutrition, workoutHistory }) {
       ? `${athlete.heightFt}'${athlete.heightIn ?? 0}"`
       : 'unknown';
 
-  /* period data */
   const periodDays = nutrition?.periodDays ?? [];
   const bulkCutBlocks = nutrition?.bulkCutBlocks ?? [];
 
-  /* format bulk/cut blocks */
   const cycleText =
     bulkCutBlocks.length > 0
       ? bulkCutBlocks
@@ -20,7 +18,6 @@ function buildSystemPrompt({ athlete, schedule, nutrition, workoutHistory }) {
           .join('\n')
       : '  None logged.';
 
-  /* format period days */
   const periodText =
     periodDays.length > 0
       ? `  ${periodDays.length} days logged: ${[...periodDays]
@@ -29,7 +26,6 @@ function buildSystemPrompt({ athlete, schedule, nutrition, workoutHistory }) {
           .join(', ')} (showing last 10)`
       : '  None logged.';
 
-  /* format schedule */
   const scheduleText =
     schedule && schedule.length > 0
       ? schedule
@@ -40,7 +36,6 @@ function buildSystemPrompt({ athlete, schedule, nutrition, workoutHistory }) {
           .join('\n')
       : '  No schedule.';
 
-  /* format workout history */
   const historyText =
     workoutHistory && workoutHistory.length > 0
       ? workoutHistory
@@ -87,24 +82,26 @@ ${historyText}
 Always personalize your advice to this athlete's actual data above. If they ask about nutrition, reference their current cycle if active. If they ask about training, reference their schedule and history. If cycle tracking is enabled, factor in menstrual phase when relevant.`;
 }
 
-/* ─── send message to Claude API ─── */
-async function callClaude(messages, systemPrompt) {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+/* ─── call OpenAI via Vercel serverless proxy ─── */
+async function callOpenAI(messages, systemPrompt) {
+  const response = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'gpt-4o',
       max_tokens: 1000,
-      system: systemPrompt,
-      messages: messages.map((m) => ({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: m.text,
-      })),
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...messages.map((m) => ({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.text,
+        })),
+      ],
     }),
   });
   if (!response.ok) throw new Error(`API error ${response.status}`);
   const data = await response.json();
-  return data.content?.find((b) => b.type === 'text')?.text ?? '…';
+  return data.choices?.[0]?.message?.content ?? '…';
 }
 
 /* ─── suggested prompts ─── */
@@ -161,12 +158,10 @@ export default function ChatPage({
     [athlete, schedule, nutrition, workoutHistory]
   );
 
-  /* scroll to bottom on new messages */
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, loading]);
 
-  /* auto-resize textarea */
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -181,22 +176,13 @@ export default function ChatPage({
     setError(null);
 
     const userMsg = { id: Date.now(), role: 'user', text: trimmed };
-    const nextMessages = [userMsg, ...chatMessages]
-      .reverse()
-      .slice(0, 40)
-      .reverse(); // keep last 40, oldest first
+    const nextMessages = [userMsg, ...chatMessages].reverse().slice(0, 40).reverse();
 
     setChatMessages((prev) => [userMsg, ...prev]);
     setLoading(true);
 
     try {
-      // build messages array for API (oldest first, no system)
-      const apiMessages = [...nextMessages].map((m) => ({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
-        text: m.text,
-      }));
-
-      const reply = await callClaude(apiMessages, systemPrompt);
+      const reply = await callOpenAI(nextMessages, systemPrompt);
       const assistantMsg = { id: Date.now() + 1, role: 'assistant', text: reply };
       setChatMessages((prev) => [assistantMsg, ...prev]);
     } catch (err) {
@@ -225,8 +211,6 @@ export default function ChatPage({
           padding: 0;
           overflow: hidden;
         }
-
-        /* ── header ── */
         .chat-header {
           flex-shrink: 0;
           padding: 18px 20px 14px;
@@ -251,7 +235,6 @@ export default function ChatPage({
           color: #bcdcff;
           flex-shrink: 0;
         }
-        .chat-header-info {}
         .chat-header-name {
           font-size: 0.92rem;
           font-weight: 800;
@@ -274,8 +257,6 @@ export default function ChatPage({
           margin-right: 5px;
           vertical-align: middle;
         }
-
-        /* ── messages area ── */
         .chat-messages {
           flex: 1;
           overflow-y: auto;
@@ -288,21 +269,14 @@ export default function ChatPage({
         }
         .chat-messages::-webkit-scrollbar { width: 4px; }
         .chat-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
-
         .chat-msg-row {
           display: flex;
           align-items: flex-end;
           gap: 8px;
           max-width: 680px;
         }
-        .chat-msg-coach {
-          align-self: flex-start;
-        }
-        .chat-msg-user {
-          align-self: flex-end;
-          flex-direction: row-reverse;
-        }
-
+        .chat-msg-coach { align-self: flex-start; }
+        .chat-msg-user { align-self: flex-end; flex-direction: row-reverse; }
         .chat-avatar {
           width: 28px;
           height: 28px;
@@ -317,7 +291,6 @@ export default function ChatPage({
           color: #bcdcff;
           flex-shrink: 0;
         }
-
         .chat-bubble {
           padding: 10px 14px;
           border-radius: 16px;
@@ -339,8 +312,6 @@ export default function ChatPage({
           color: #daeeff;
           border-bottom-right-radius: 4px;
         }
-
-        /* ── typing dots ── */
         .chat-typing-row {
           display: flex;
           align-items: flex-end;
@@ -372,8 +343,6 @@ export default function ChatPage({
           0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
           30% { transform: translateY(-4px); opacity: 1; }
         }
-
-        /* ── empty / suggestions ── */
         .chat-empty {
           display: flex;
           flex-direction: column;
@@ -415,8 +384,6 @@ export default function ChatPage({
           color: #bcdcff;
           transform: translateY(-1px);
         }
-
-        /* ── error ── */
         .chat-error {
           font-size: 0.76rem;
           color: #ffb8b8;
@@ -424,8 +391,6 @@ export default function ChatPage({
           padding: 6px 16px;
           flex-shrink: 0;
         }
-
-        /* ── input bar ── */
         .chat-input-bar {
           flex-shrink: 0;
           padding: 12px 16px 16px;
@@ -443,9 +408,7 @@ export default function ChatPage({
           padding: 8px 8px 8px 16px;
           transition: border-color 0.15s;
         }
-        .chat-input-row:focus-within {
-          border-color: rgba(87,165,255,0.35);
-        }
+        .chat-input-row:focus-within { border-color: rgba(87,165,255,0.35); }
         .chat-textarea {
           flex: 1;
           background: transparent;
@@ -477,14 +440,8 @@ export default function ChatPage({
           flex-shrink: 0;
           transition: transform 0.14s, filter 0.14s, opacity 0.14s;
         }
-        .chat-send-btn:hover:not(:disabled) {
-          transform: scale(1.07);
-          filter: brightness(1.15);
-        }
-        .chat-send-btn:disabled {
-          opacity: 0.3;
-          cursor: not-allowed;
-        }
+        .chat-send-btn:hover:not(:disabled) { transform: scale(1.07); filter: brightness(1.15); }
+        .chat-send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
         .chat-input-hint {
           font-size: 0.63rem;
           color: var(--muted);
@@ -512,11 +469,7 @@ export default function ChatPage({
           <div className="chat-empty-label">Ask your coach</div>
           <div className="chat-suggestions">
             {SUGGESTIONS.map((s) => (
-              <button
-                key={s}
-                className="chat-suggestion-btn"
-                onClick={() => send(s)}
-              >
+              <button key={s} className="chat-suggestion-btn" onClick={() => send(s)}>
                 {s}
               </button>
             ))}
