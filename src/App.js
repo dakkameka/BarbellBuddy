@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import './App.css';
 import { getPostSessionDebrief, getLiveCoachMessage, getCalendarAdjustment, getNutritionAdvice, getChatCoachReply } from './openai';
 
-import { useState } from 'react';
 
 import { useState } from 'react';
 import HomePage from './pages/HomePage';
@@ -43,9 +42,3 @@ function App() {
 }
 
 export default App;
-    </div>
-  );
-}
-
-export default App;
-
