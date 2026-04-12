@@ -95,7 +95,7 @@ function HomePage({ summary, athlete, schedule, nutrition, progress, startTodays
 
             <div className="home-hero-copy">
               <h2 className="home-hero-title">
-                Start today’s workout when you’re ready.
+                Start today&apos;s workout when you&apos;re ready.
               </h2>
               <p className="home-hero-text">
                 {summary.topInsight}
