@@ -1,0 +1,87 @@
+.profile-shell {
+  width: min(900px, 100%);
+  margin: 0 auto;
+  padding: 20px 10px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.profile-header {
+  padding: 20px;
+}
+
+.profile-header h1 {
+  margin: 0;
+  font-size: 28px;
+  color: rgba(255,255,255,0.95);
+}
+
+.profile-header p {
+  margin-top: 6px;
+  color: rgba(255,255,255,0.6);
+  font-size: 14px;
+}
+
+.profile-section {
+  padding: 20px;
+}
+
+.profile-section h2 {
+  margin-bottom: 14px;
+  font-size: 18px;
+  color: rgba(255,255,255,0.9);
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.profile-grid input,
+.profile-grid select {
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.06);
+  color: white;
+  font-size: 14px;
+  outline: none;
+}
+
+.profile-grid input::placeholder {
+  color: rgba(255,255,255,0.4);
+}
+
+.profile-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.ghost-btn {
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  color: white;
+  cursor: pointer;
+}
+
+.primary-btn {
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(255,255,255,0.2);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.profile-saved {
+  text-align: center;
+  color: #7CFFB2;
+  margin-top: 10px;
+}
