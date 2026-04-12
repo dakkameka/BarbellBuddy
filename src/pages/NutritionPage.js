@@ -105,9 +105,7 @@ const DAY_HEADERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
 /* ─── Droplet SVG ─── */
 function DropletIcon({ filled, predicted }) {
-  const fill = filled
-    ? 'rgba(212,83,126,0.9)'
-    : 'none';
+  const fill = filled ? 'rgba(212,83,126,0.9)' : 'none';
   const stroke = filled
     ? 'rgba(212,83,126,1)'
     : predicted
@@ -134,10 +132,11 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
     return d;
   }, []);
 
-  /* Gate: both flags must be true */
-  const nutritionEnabled = athlete?.nutritionGuidance && athlete?.doesBulkCutCycles;
-  /* Period tracking is automatic from profile — no toggle needed */
   const trackPeriod = athlete?.cycleTracking === true;
+  const showBulkCut = athlete?.nutritionGuidance && athlete?.doesBulkCutCycles;
+
+  /* Page is disabled only when there is nothing at all to show */
+  const nutritionEnabled = showBulkCut || trackPeriod;
 
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -194,13 +193,12 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
     else setViewMonth((m) => m + 1);
   }
 
-  /* clicking the day cell body selects it for cycle editing (future only) */
   function handleDayClick(date) {
+    if (!showBulkCut) return; // no cycle editing in period-only mode
     if (date < today) return;
     setSelectedDate(date);
   }
 
-  /* clicking the droplet toggles period for that day (past + today + future all ok) */
   function handleDropletClick(e, date) {
     e.stopPropagation();
     const key = toKey(date);
@@ -262,8 +260,9 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
             <div className="nutr-disabled-icon">🥗</div>
             <h2 className="nutr-disabled-title">Nutrition tracking is off</h2>
             <p className="nutr-disabled-body">
-              Enable <strong>Nutrition Guidance</strong> and{' '}
-              <strong>Bulk / Cut Cycles</strong> in your profile to use this page.
+              Enable <strong>Nutrition Guidance</strong>,{' '}
+              <strong>Bulk / Cut Cycles</strong>, or{' '}
+              <strong>Cycle Tracking</strong> in your profile to use this page.
             </p>
             <button
               className="nutr-apply-btn"
@@ -283,33 +282,38 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
     <div className="screen nutrition-screen">
       <div className="nutr-shell">
 
-        {/* Banner */}
-        <div className="nutr-banner">
-          <div className="nutr-banner-label">Current cycle</div>
-          {currentCycleInfo ? (
-            <>
-              <div className={`nutr-cycle-pill nutr-pill-${currentCycleInfo.type}`}>
-                <span className={`nutr-dot nutr-dot-${currentCycleInfo.type}`} />
-                {currentCycleInfo.type.charAt(0).toUpperCase() + currentCycleInfo.type.slice(1)}
-                {' '}— week {currentCycleInfo.week} of {currentCycleInfo.totalWeeks}
-              </div>
-              <div className="nutr-prog-wrap">
-                <div
-                  className={`nutr-prog-fill nutr-prog-${currentCycleInfo.type}`}
-                  style={{ width: `${currentCycleInfo.pct}%` }}
-                />
-              </div>
-              <div className="nutr-banner-meta">
-                <span>Started {fmtShort(currentCycleInfo.start)}</span>
-                <span>{currentCycleInfo.pct}% complete · ends {fmtShort(currentCycleInfo.end)}</span>
-              </div>
-            </>
-          ) : (
-            <div className="nutr-cycle-pill nutr-pill-none">No active cycle — click a future date to add one</div>
-          )}
-        </div>
+        {/* Banner — only when bulk/cut is enabled */}
+        {showBulkCut && (
+          <div className="nutr-banner">
+            <div className="nutr-banner-label">Current cycle</div>
+            {currentCycleInfo ? (
+              <>
+                <div className={`nutr-cycle-pill nutr-pill-${currentCycleInfo.type}`}>
+                  <span className={`nutr-dot nutr-dot-${currentCycleInfo.type}`} />
+                  {currentCycleInfo.type.charAt(0).toUpperCase() + currentCycleInfo.type.slice(1)}
+                  {' '}— week {currentCycleInfo.week} of {currentCycleInfo.totalWeeks}
+                </div>
+                <div className="nutr-prog-wrap">
+                  <div
+                    className={`nutr-prog-fill nutr-prog-${currentCycleInfo.type}`}
+                    style={{ width: `${currentCycleInfo.pct}%` }}
+                  />
+                </div>
+                <div className="nutr-banner-meta">
+                  <span>Started {fmtShort(currentCycleInfo.start)}</span>
+                  <span>{currentCycleInfo.pct}% complete · ends {fmtShort(currentCycleInfo.end)}</span>
+                </div>
+              </>
+            ) : (
+              <div className="nutr-cycle-pill nutr-pill-none">No active cycle — click a future date to add one</div>
+            )}
+          </div>
+        )}
 
-        <div className="nutr-body">
+        <div
+          className="nutr-body"
+          style={!showBulkCut ? { gridTemplateColumns: '1fr' } : {}}
+        >
 
           {/* Calendar */}
           <div className="nutr-cal-card">
@@ -330,7 +334,7 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
                 const isPast = date < today;
                 const isToday = toKey(date) === toKey(today);
                 const key = toKey(date);
-                const b = blockAt(date);
+                const b = showBulkCut ? blockAt(date) : null;
                 const isActualPeriod = trackPeriod && markedPeriodDays.has(key);
                 const isPredicted = trackPeriod && !isActualPeriod && predictedPeriodKeys.has(key);
                 const isSelected = selectedDate && toKey(date) === toKey(selectedDate);
@@ -347,8 +351,8 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
                     className={cellClass}
                     onClick={() => handleDayClick(date)}
                     role="button"
-                    tabIndex={isPast ? -1 : 0}
-                    onKeyDown={(e) => e.key === 'Enter' && !isPast && handleDayClick(date)}
+                    tabIndex={isPast || !showBulkCut ? -1 : 0}
+                    onKeyDown={(e) => e.key === 'Enter' && !isPast && showBulkCut && handleDayClick(date)}
                   >
                     <span className="nutr-day-num">{date.getDate()}</span>
                     {b && <span className="nutr-day-tag">{b.type}</span>}
@@ -377,9 +381,13 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
 
             {/* Legend */}
             <div className="nutr-legend">
-              <div className="nutr-leg-item"><div className="nutr-leg-swatch nutr-swatch-bulk" />Bulk</div>
-              <div className="nutr-leg-item"><div className="nutr-leg-swatch nutr-swatch-cut" />Cut</div>
-              <div className="nutr-leg-item"><div className="nutr-leg-swatch nutr-swatch-maintain" />Maintain</div>
+              {showBulkCut && (
+                <>
+                  <div className="nutr-leg-item"><div className="nutr-leg-swatch nutr-swatch-bulk" />Bulk</div>
+                  <div className="nutr-leg-item"><div className="nutr-leg-swatch nutr-swatch-cut" />Cut</div>
+                  <div className="nutr-leg-item"><div className="nutr-leg-swatch nutr-swatch-maintain" />Maintain</div>
+                </>
+              )}
               {trackPeriod && (
                 <div className="nutr-leg-item"><DropletIcon filled /><span style={{ marginLeft: 4 }}>Period</span></div>
               )}
@@ -394,78 +402,80 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
             )}
           </div>
 
-          {/* Sidebar */}
-          <div className="nutr-sidebar">
-            <div className="nutr-panel">
-              <div className="nutr-panel-title">Cycle editor</div>
+          {/* Sidebar — only when bulk/cut is enabled */}
+          {showBulkCut && (
+            <div className="nutr-sidebar">
+              <div className="nutr-panel">
+                <div className="nutr-panel-title">Cycle editor</div>
 
-              <div className="nutr-sel-box">
-                {selectedDate
-                  ? <>Starting <strong>{fmtShort(selectedDate)}</strong></>
-                  : 'Click a future date to begin'}
-              </div>
-
-              <div className="nutr-field">
-                <div className="nutr-field-label">Type</div>
-                <div className="nutr-seg">
-                  {['bulk', 'cut', 'maintain'].map((t) => (
-                    <button
-                      key={t}
-                      className={`nutr-seg-btn nutr-seg-${t}${activeType === t ? ' nutr-seg-active' : ''}`}
-                      onClick={() => setActiveType(t)}
-                    >
-                      {t.charAt(0).toUpperCase() + t.slice(1)}
-                    </button>
-                  ))}
+                <div className="nutr-sel-box">
+                  {selectedDate
+                    ? <>Starting <strong>{fmtShort(selectedDate)}</strong></>
+                    : 'Click a future date to begin'}
                 </div>
-              </div>
 
-              <div className="nutr-field">
-                <div className="nutr-field-label">Duration</div>
-                <div className="nutr-dur-grid">
-                  {DURATIONS.map(({ label, days }) => (
-                    <button
-                      key={days}
-                      className={`nutr-dur-btn${activeDur === days ? ' nutr-dur-active' : ''}`}
-                      onClick={() => setActiveDur(days)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {activeDur === 0 && (
                 <div className="nutr-field">
-                  <div className="nutr-field-label">Custom days</div>
-                  <input
-                    className="nutr-input"
-                    type="number"
-                    min={7}
-                    max={180}
-                    value={customDays}
-                    onChange={(e) => setCustomDays(Math.max(7, parseInt(e.target.value) || 7))}
-                  />
+                  <div className="nutr-field-label">Type</div>
+                  <div className="nutr-seg">
+                    {['bulk', 'cut', 'maintain'].map((t) => (
+                      <button
+                        key={t}
+                        className={`nutr-seg-btn nutr-seg-${t}${activeType === t ? ' nutr-seg-active' : ''}`}
+                        onClick={() => setActiveType(t)}
+                      >
+                        {t.charAt(0).toUpperCase() + t.slice(1)}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              )}
 
-              <div className="nutr-preview-box">
-                {selectedDate && previewEnd
-                  ? `${fmtShort(selectedDate)} → ${fmtShort(previewEnd)} (${getDur()} days)`
-                  : 'Select a start date on the calendar'}
-              </div>
+                <div className="nutr-field">
+                  <div className="nutr-field-label">Duration</div>
+                  <div className="nutr-dur-grid">
+                    {DURATIONS.map(({ label, days }) => (
+                      <button
+                        key={days}
+                        className={`nutr-dur-btn${activeDur === days ? ' nutr-dur-active' : ''}`}
+                        onClick={() => setActiveDur(days)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-              <button className="nutr-apply-btn" onClick={applyBlock} disabled={!selectedDate}>
-                Apply cycle
-              </button>
+                {activeDur === 0 && (
+                  <div className="nutr-field">
+                    <div className="nutr-field-label">Custom days</div>
+                    <input
+                      className="nutr-input"
+                      type="number"
+                      min={7}
+                      max={180}
+                      value={customDays}
+                      onChange={(e) => setCustomDays(Math.max(7, parseInt(e.target.value) || 7))}
+                    />
+                  </div>
+                )}
 
-              {selectedBlock && selectedDate && (
-                <button className="nutr-del-btn" onClick={removeBlock}>
-                  Remove cycle
+                <div className="nutr-preview-box">
+                  {selectedDate && previewEnd
+                    ? `${fmtShort(selectedDate)} → ${fmtShort(previewEnd)} (${getDur()} days)`
+                    : 'Select a start date on the calendar'}
+                </div>
+
+                <button className="nutr-apply-btn" onClick={applyBlock} disabled={!selectedDate}>
+                  Apply cycle
                 </button>
-              )}
+
+                {selectedBlock && selectedDate && (
+                  <button className="nutr-del-btn" onClick={removeBlock}>
+                    Remove cycle
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
