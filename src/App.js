@@ -8,6 +8,10 @@ import LiveWorkoutPage from './pages/LiveWorkoutPage';
 import WorkoutSummaryPage from './pages/WorkoutSummaryPage';
 import './styles/globals.css';
 
+const DEFAULT_NUTRITION = {
+  bulkCutBlocks: [],
+};
+
 const DEFAULT_ATHLETE = {
   firstName: 'Jane',
   lastName: 'Doe',
