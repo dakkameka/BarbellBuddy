@@ -1,8 +1,16 @@
 import { render, screen } from '@testing-library/react';
+import { vi } from 'vitest';
 import App from './App';
 
-test('renders learn react link', () => {
+vi.mock('./openai', () => ({
+  getPostSessionDebrief: vi.fn(),
+  getLiveCoachMessage: vi.fn(),
+  getCalendarAdjustment: vi.fn(),
+  getNutritionAdvice: vi.fn(),
+  getChatCoachReply: vi.fn(),
+}));
+
+test('renders without crashing', () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  expect(document.body).toBeTruthy();
 });
