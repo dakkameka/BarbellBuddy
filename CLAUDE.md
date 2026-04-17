@@ -1,0 +1,202 @@
+# Coach NOVA
+
+AI-augmented wearable coaching platform for competitive powerlifters. UC Berkeley course project (ME292C / DESINV 190: Human-AI Design Methods) in partnership with HP.
+
+**Core problem:** Serious athletes use 5–8 disconnected apps. Coach NOVA consolidates them into a unified system delivering real-time, in-set feedback — including haptic cues mid-lift.
+
+## Team
+
+- Shanthanu Saravanan (hardware lead, this repo)
+- Lilly Sweet, Kai Sims, Karisma Vyas, Mohannad ElAsad
+
+## Architecture
+
+```
+ESP32-C3 + LSM6DS3
+       │ USB serial (CSV)
+       ▼
+Python GUI (app/)          ← live runtime authority, post-set coaching, localhost WS bridge
+       │ ws://127.0.0.1:8765
+       ▼
+React Frontend (src/)      ← live hardware mode + demo data mode
+       │ POST /api/openai
+       ▼
+Vercel Serverless (api/)   ← proxies OpenAI API
+```
+
+> Current integration path: hardware -> Python -> localhost WebSocket -> React. BLE is still a future roadmap item.
+
+**Frontend** — React 19 + Vite SPA (`src/App.jsx`)
+**Backend** — Vercel serverless function (`api/openai.js`) proxying OpenAI API
+**Hardware** — ESP32-C3 Super Mini + SparkFun LSM6DS3 6-axis IMU, Arduino/PlatformIO
+**Python GUI** — PySide6 desktop app (`app/`) for serial IMU visualization, set logging, and post-set coaching
+
+## Implementation Status
+
+| Component | Status | Notes |
+|---|---|---|
+| React frontend (5 screens) | ✅ Done | Vite app with hardware/demo runtime modes |
+| Backend API (Vercel) | ✅ Done | OpenAI proxy, secure key handling |
+| ESP32 firmware | ✅ Active | 50Hz CSV streaming + on-device rep detection + gyro calibration |
+| Python GUI | ✅ Done | Live plots, complementary filter, ZUPT velocity, WS bridge |
+| Motion estimation | ✅ Done | Runs on laptop, not on device |
+| Rep detection (on-device) | ✅ Done | Threshold + debounce state machine in firmware |
+| Velocity calc (on-device) | ❌ Not started | Firmware roadmap item |
+| BLE transmission | ❌ Not started | Needed to close hardware→frontend gap |
+| Haptic feedback | ❌ Not started | No motor hardware or code yet |
+
+## Running Locally
+
+```bash
+npm install
+npm run dev      # Dev server at http://localhost:3000
+npm run build    # Production build
+npm run test     # Vitest
+```
+
+Local AI setup:
+
+```bash
+cp .env.example .env
+```
+
+Add `OPENAI_API_KEY=...` to `.env`. Both the Python coach and the local Vite `/api/openai` dev route read that file.
+
+## Hardware (ESP32 / PlatformIO)
+
+```bash
+platformio run                 # Build
+platformio run -t upload       # Flash to ESP32-C3-DevKitM-1
+platformio device monitor      # Serial at 115200 baud
+```
+
+### Wiring (I2C mode)
+
+| LSM6DS3 Pin | Connects To |
+|---|---|
+| VIN | ESP32 3.3V |
+| GND | ESP32 GND |
+| SDA | ESP32 GPIO8 |
+| SCL | ESP32 GPIO9 |
+| CS | ESP32 3.3V (pulls HIGH → enables I2C mode) |
+| SAO | ESP32 GND (sets I2C address to 0x6A) |
+
+I2C address: `0x6A`. IMU reads at **50 Hz**. Streams CSV over serial at 115200 baud.
+
+### Serial Output Format
+
+**Sensor data (every sample at 50Hz):**
+```
+ax,ay,az,gx,gy,gz,temp
+```
+- `ax/ay/az` — accelerometer (g)
+- `gx/gy/gz` — gyroscope (dps), gyro bias subtracted
+- `temp` — temperature (°C)
+
+**Rep summary (on each completed rep):**
+```
+REP,<rep_number>,<duration_ms>,<peak_accel_g>
+```
+Example: `REP,3,1240,1.87`
+
+Startup sequence prints two lines before CSV begins: `Calibrating gyro...`, bias values, then `IMU ready!`. The Python CSV parser ignores non-numeric lines gracefully.
+
+### ESP32-C3 Serial Note
+
+`ARDUINO_USB_CDC_ON_BOOT=1` is required for serial output on the ESP32-C3 Super Mini. Always include `while (!Serial) delay(10);` after `Serial.begin()`.
+
+### Target Derived Metrics (priority order)
+
+1. **Bar velocity** (m/s) — core VBT metric, primary differentiator
+2. **Velocity loss %** — fatigue indicator within a set
+3. **Rep counting** — detect reps from acceleration waveform
+4. **Range of motion** — full lift depth and lockout
+5. **Bar path deviation** — lateral drift from ideal vertical path
+6. **Rep asymmetry** — left/right imbalance detection
+7. **Lift phase timing** — eccentric vs. concentric phase durations
+
+### Firmware Roadmap
+
+1. ~~Rep detection~~ — ✅ done (threshold + debounce state machine, REP summary lines)
+2. Velocity calculation — double-integrate accel with bias removal, high-pass filter, ZUPT
+3. BLE transmission — stream computed metrics to companion app
+4. Haptic feedback — vibration motor triggered on velocity drop below threshold
+
+### Hardware Constraints
+
+- Limited per-person budget — no speculative component additions
+- PPG sensor (MAX30102) not confirmed for MVP
+- All processing must run on ESP32-C3 (may upgrade to ESP32-S3 if compute-bound)
+- Sensor placement: barbell collar/sleeve preferred; forearm is fallback (wrist-worn conflicts with powerlifting wrist wraps)
+- Real-time = haptic feedback within the rep; visual feedback is post-set only
+
+## Python App (Kai's GUI)
+
+A PySide6 desktop app in `app/` for real-time IMU visualization and velocity estimation. This is the current working prototype for VBT — connects directly to the ESP32 over USB serial.
+
+```bash
+pip install -r requirements.txt
+python app/main.py
+```
+
+Select a `/dev/cu.usbmodem*` port (auto-discovered) or choose `SIMULATED` to run without hardware.
+The app now supports manual set context entry, raw CSV logging, and automatic post-set coaching after each completed set.
+It also hosts the localhost bridge consumed by the React app in hardware mode.
+
+**Algorithm** (`app/motion_estimator.py`): complementary filter (α=0.98) fuses gyro + accel for pitch/roll, subtracts gravity, integrates linear accel for velocity. ZUPT zeroes velocity when stationary. Bias calibration runs on the first 50 samples.
+
+> Known limitation: if serial gap > 0.5s, velocity update is silently skipped.
+
+| File | Purpose |
+|---|---|
+| `app/main.py` | PySide6 GUI — live plots, set controls, and coach panel |
+| `app/serial_reader.py` | Serial port handler, CSV parser, `ImuSample` dataclass |
+| `app/motion_estimator.py` | Complementary filter + velocity integration |
+| `app/simulator.py` | Synthetic IMU data for testing without hardware |
+| `app/set_analyzer.py` | Per-rep and per-set metric extraction for AI coaching |
+| `app/session_logger.py` | Timestamped raw sample, rep event, and set summary logging |
+| `app/ai_coach.py` | Structured post-set coaching with OpenAI or heuristic fallback |
+| `app/live_bridge.py` | Localhost WebSocket bridge for the React app |
+
+## Key Files
+
+| File | Purpose |
+|---|---|
+| `src/App.jsx` | Main React app with hardware/demo mode switching |
+| `src/liveBridge.js` | Browser WebSocket client for Python bridge |
+| `src/openai.js` | AI coaching helper functions |
+| `api/openai.js` | Backend API route (Vercel serverless) |
+| `src/main.cpp` | ESP32 Arduino firmware |
+| `platformio.ini` | PlatformIO config (ESP32-C3, LSM6DS3 library) |
+| `vite.config.mjs` | Vite build and Vitest config |
+
+## App Screens
+
+1. **Start Lift** — Lift selection (squat/bench/deadlift/OHP/RDL/front squat), sets/reps/weight
+2. **Live Session** — Rep counter, bar velocity (m/s), tilt (degrees), live AI coaching cues
+3. **Post-Session** — Volume, velocity dropoff (fatigue), AI debrief (3 bullets)
+4. **Calendar** — 14-day AI-generated periodized schedule with caloric targets
+5. **Chat Coach** — Conversational AI that can regenerate/adjust the schedule
+
+## AI Integration
+
+All AI calls go through `/api/openai` (backend route). Model: `gpt-4o-mini`, max 700 tokens, temp 0.7.
+
+Functions in `src/openai.js`:
+- `getPostSessionDebrief(session)` — 3-bullet post-workout summary
+- `getLiveCoachMessage(data)` — single-line real-time cue
+- `getCalendarAdjustment(data)` — periodization advice
+- `getNutritionAdvice(data)` — macro/nutrition guidance
+- `getChatCoachReply(history, context, schedule)` — JSON with optional schedule updates
+
+## Dependencies
+
+- `react@19.2.4`, `openai@6.33.0`
+- PlatformIO: `espressif32`, `arduino`, `sparkfun/SparkFun LSM6DS3 Breakout`
+- Python: `pyserial`, `PySide6`, `pyqtgraph`, `openai`
+
+## Branch Convention
+
+- `main` — stable, team-reviewed code only
+- `hardware/` prefix — hardware bringup and firmware work
+- `feature/` prefix — new capability development

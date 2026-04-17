@@ -1,5 +1,13 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# PlatformIO
+.pio/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+
 # dependencies
 /node_modules
 /.pnp
@@ -10,6 +18,7 @@
 
 # production
 /build
+/dist
 
 # misc
 .DS_Store
@@ -25,3 +34,4 @@ key.txt
 .env
 .env.local
 .vercel
+logs/
