@@ -192,6 +192,7 @@ function FoodCatalogModal({ onAdd, onClose }) {
     setCustomName(''); setCustomCals(''); setCustomProtein(''); setCustomCarbs(''); setCustomFat('');
   }
 
+  // ── FIXED: uses temperature: 0.2 for reliable JSON output ──
   async function handleAiEstimate() {
     if (!aiQuery.trim()) { setAiError('Please describe a meal first.'); return; }
     setAiLoading(true);
@@ -204,6 +205,7 @@ function FoodCatalogModal({ onAdd, onClose }) {
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           max_tokens: 300,
+          temperature: 0.2,
           messages: [
             {
               role: 'system',
@@ -296,6 +298,54 @@ Use realistic, research-backed values. For fast food, use the actual published n
             <button style={styles.addBtn} onClick={handleCustomAdd}>+ Add to log</button>
           </div>
         )}
+
+        {/* AI estimate UI shown inside catalog tab when aiQuery is set */}
+        {tab === 'catalog' && (
+          <div style={{ padding: '0 20px 16px' }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'rgba(216,226,255,0.5)', marginBottom: 8 }}>
+              🤖 Can't find it? Describe it and let AI estimate:
+            </div>
+            <div style={styles.aiInputRow}>
+              <input
+                style={{ ...styles.addInput, flex: 1 }}
+                placeholder="e.g. 'Big Mac meal large fries'"
+                value={aiQuery}
+                onChange={(e) => { setAiQuery(e.target.value); setAiResult(null); setAiError(''); }}
+                onKeyDown={(e) => e.key === 'Enter' && !aiLoading && handleAiEstimate()}
+              />
+              <button
+                style={{ ...styles.addBtn, minWidth: 90, opacity: aiLoading ? 0.65 : 1 }}
+                onClick={handleAiEstimate}
+                disabled={aiLoading}
+              >
+                {aiLoading ? '...' : 'Estimate'}
+              </button>
+            </div>
+            {aiLoading && (
+              <div style={styles.aiLoadingWrap}>
+                <div style={styles.aiSpinner} />
+                <span style={styles.aiLoadingText}>Analysing nutrition data…</span>
+              </div>
+            )}
+            {aiError && <div style={styles.errorText}>{aiError}</div>}
+            {aiResult && (
+              <div style={{ ...styles.aiResultCard, marginTop: 10 }}>
+                <div style={styles.aiResultName}>{aiResult.name}</div>
+                <div style={styles.aiResultMacros}>
+                  <div style={styles.aiMacroPill}><span style={styles.aiMacroVal}>{aiResult.cals}</span><span style={styles.aiMacroLbl}>kcal</span></div>
+                  <div style={{ ...styles.aiMacroPill, borderColor: 'rgba(87,165,255,0.3)' }}><span style={{ ...styles.aiMacroVal, color: '#57a5ff' }}>{aiResult.protein}g</span><span style={styles.aiMacroLbl}>protein</span></div>
+                  <div style={{ ...styles.aiMacroPill, borderColor: 'rgba(255,216,77,0.3)' }}><span style={{ ...styles.aiMacroVal, color: '#ffd84d' }}>{aiResult.carbs}g</span><span style={styles.aiMacroLbl}>carbs</span></div>
+                  <div style={{ ...styles.aiMacroPill, borderColor: 'rgba(255,159,99,0.3)' }}><span style={{ ...styles.aiMacroVal, color: '#ff9f63' }}>{aiResult.fat}g</span><span style={styles.aiMacroLbl}>fat</span></div>
+                </div>
+                {aiResult.note && <div style={styles.aiResultNote}>ℹ️ {aiResult.note}</div>}
+                <div style={styles.aiResultActions}>
+                  <button style={styles.addBtn} onClick={handleAiConfirm}>✓ Add to log</button>
+                  <button style={styles.aiRetryBtn} onClick={() => setAiResult(null)}>Try again</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -326,9 +376,8 @@ function MacroBar({ label, consumed, goal, color }) {
   );
 }
 
-/* ─── NEW: Calorie calculator helper ─── */
+/* ─── Calorie calculator helper ─── */
 function calcDailyCalories(athlete, cycleType, goalWeight) {
-  // Mifflin-St Jeor BMR
   const weightKg = (athlete.bodyweight || 130) * 0.453592;
   const heightCm = ((athlete.heightFt || 5) * 12 + (athlete.heightIn || 4)) * 2.54;
   const age = athlete.age || 25;
@@ -341,15 +390,12 @@ function calcDailyCalories(athlete, cycleType, goalWeight) {
     bmr = 10 * weightKg + 6.25 * heightCm - 5 * age - 161;
   }
 
-  // Moderate activity multiplier (3-5 days/week lifting)
   const tdee = Math.round(bmr * 1.55);
 
-  // Base cycle adjustment
   let base = tdee;
   if (cycleType === 'bulk') base = tdee + 300;
   else if (cycleType === 'cut') base = tdee - 300;
 
-  // Goal weight nudge: if far from goal, add up to ±100 extra cals
   if (goalWeight && athlete.bodyweight) {
     const diff = goalWeight - athlete.bodyweight;
     const nudge = Math.min(Math.abs(diff) * 5, 100) * Math.sign(diff);
@@ -359,7 +405,7 @@ function calcDailyCalories(athlete, cycleType, goalWeight) {
   return base;
 }
 
-/* ─── NEW: Calorie Ring SVG ─── */
+/* ─── Calorie Ring SVG ─── */
 function CalorieRing({ consumed, goal }) {
   const radius = 80;
   const stroke = 10;
@@ -377,61 +423,17 @@ function CalorieRing({ consumed, goal }) {
 
   return (
     <svg width={radius * 2} height={radius * 2} style={{ display: 'block' }}>
-      {/* Track */}
+      <circle cx={radius} cy={radius} r={normalised} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
       <circle
-        cx={radius}
-        cy={radius}
-        r={normalised}
-        fill="none"
-        stroke="rgba(255,255,255,0.08)"
-        strokeWidth={stroke}
-      />
-      {/* Fill */}
-      <circle
-        cx={radius}
-        cy={radius}
-        r={normalised}
-        fill="none"
-        stroke={ringColor}
-        strokeWidth={stroke}
-        strokeLinecap="round"
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
+        cx={radius} cy={radius} r={normalised} fill="none"
+        stroke={ringColor} strokeWidth={stroke} strokeLinecap="round"
+        strokeDasharray={circumference} strokeDashoffset={offset}
         transform={`rotate(-90 ${radius} ${radius})`}
         style={{ transition: 'stroke-dashoffset 0.5s ease, stroke 0.4s ease' }}
       />
-      {/* Centre text */}
-      <text
-        x={radius}
-        y={radius - 10}
-        textAnchor="middle"
-        fill="#f7f9ff"
-        fontSize="22"
-        fontWeight="700"
-        fontFamily="'Space Grotesk', sans-serif"
-      >
-        {consumed.toLocaleString()}
-      </text>
-      <text
-        x={radius}
-        y={radius + 10}
-        textAnchor="middle"
-        fill="rgba(216,226,255,0.56)"
-        fontSize="11"
-        fontWeight="600"
-        fontFamily="'Inter', sans-serif"
-      >
-        of {goal.toLocaleString()} kcal
-      </text>
-      <text
-        x={radius}
-        y={radius + 26}
-        textAnchor="middle"
-        fill={ringColor}
-        fontSize="11"
-        fontWeight="700"
-        fontFamily="'Inter', sans-serif"
-      >
+      <text x={radius} y={radius - 10} textAnchor="middle" fill="#f7f9ff" fontSize="22" fontWeight="700" fontFamily="'Space Grotesk', sans-serif">{consumed.toLocaleString()}</text>
+      <text x={radius} y={radius + 10} textAnchor="middle" fill="rgba(216,226,255,0.56)" fontSize="11" fontWeight="600" fontFamily="'Inter', sans-serif">of {goal.toLocaleString()} kcal</text>
+      <text x={radius} y={radius + 26} textAnchor="middle" fill={ringColor} fontSize="11" fontWeight="700" fontFamily="'Inter', sans-serif">
         {isOver ? `+${(consumed - goal).toLocaleString()} over` : `${(goal - consumed).toLocaleString()} left`}
       </text>
     </svg>
@@ -445,6 +447,7 @@ function AiMealEstimator({ onAdd }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
+  // ── FIXED: uses temperature: 0.2 for reliable JSON output ──
   async function handleEstimate() {
     if (!query.trim()) { setError('Please describe a meal first.'); return; }
     setLoading(true);
@@ -457,6 +460,7 @@ function AiMealEstimator({ onAdd }) {
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           max_tokens: 300,
+          temperature: 0.2,
           messages: [
             {
               role: 'system',
@@ -499,17 +503,15 @@ Use realistic research-backed values. For fast food use actual published nutriti
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       <div style={styles.aiEstimatorHeader}>
         <span style={styles.aiEstimatorTitle}>🤖 Describe a meal</span>
-        <span style={styles.aiEstimatorSub}>AI will estimate the calories & macros</span>
+        <span style={styles.aiEstimatorSub}>AI will estimate the calories &amp; macros</span>
       </div>
 
-      {/* Example chips */}
       <div style={styles.aiExamples}>
         {EXAMPLES.map((ex) => (
           <span key={ex} style={styles.aiExampleChip} onClick={() => { setQuery(ex); setResult(null); setError(''); }}>{ex}</span>
         ))}
       </div>
 
-      {/* Input row */}
       <div style={styles.aiInputRow}>
         <input
           style={{ ...styles.addInput, flex: 1 }}
@@ -568,7 +570,7 @@ Use realistic research-backed values. For fast food use actual published nutriti
   );
 }
 
-/* ─── Weigh-In Inline Editor (shown in sidebar when a cycle is active) ─── */
+/* ─── WeighInEditor ─── */
 function WeighInEditor({ nutrition, setNutrition, athlete }) {
   const todayKey = toKey(new Date());
   const weightLog = nutrition.weightLog ?? [];
@@ -579,7 +581,6 @@ function WeighInEditor({ nutrition, setNutrition, athlete }) {
   const [editGoal, setEditGoal] = useState(String(goalWeight));
   const [saved, setSaved] = useState(false);
 
-  // Weigh-in frequency — weekly default (setting removed from profile)
   const freq = 'weekly';
   const freqDays = freq === 'daily' ? 1 : freq === 'biweekly' ? 14 : 7;
   const lastLog = weightLog.length > 0 ? weightLog[weightLog.length - 1] : null;
@@ -609,38 +610,18 @@ function WeighInEditor({ nutrition, setNutrition, athlete }) {
         <span style={wStyles.title}>⚖️ Weight tracking</span>
         {isDue && !todayLogged && <span style={wStyles.dueBadge}>Weigh-in due</span>}
       </div>
-
       {todayLogged && !saved && (
         <div style={wStyles.todayRow}>
           <span style={wStyles.todayLabel}>Today</span>
           <span style={wStyles.todayVal}>{todayLogged.weight} lbs</span>
         </div>
       )}
-
       {saved && <div style={wStyles.savedMsg}>✓ Logged!</div>}
-
       <div style={wStyles.inputRow}>
-        <input
-          style={wStyles.smallInput}
-          type="number"
-          min="50" max="500"
-          placeholder="Current (lbs)"
-          value={editWeight}
-          onChange={(e) => setEditWeight(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && logWeight()}
-        />
-        <input
-          style={wStyles.smallInput}
-          type="number"
-          min="50" max="500"
-          placeholder="Goal (lbs)"
-          value={editGoal}
-          onChange={(e) => setEditGoal(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && logWeight()}
-        />
+        <input style={wStyles.smallInput} type="number" min="50" max="500" placeholder="Current (lbs)" value={editWeight} onChange={(e) => setEditWeight(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && logWeight()} />
+        <input style={wStyles.smallInput} type="number" min="50" max="500" placeholder="Goal (lbs)" value={editGoal} onChange={(e) => setEditGoal(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && logWeight()} />
         <button style={wStyles.logBtn} onClick={logWeight}>Log</button>
       </div>
-
       {lastLog && (
         <div style={wStyles.lastLog}>
           Last logged: {lastLog.weight} lbs on {fmtShort(fromKey(lastLog.date))}
@@ -652,56 +633,17 @@ function WeighInEditor({ nutrition, setNutrition, athlete }) {
 }
 
 const wStyles = {
-  wrap: {
-    marginTop: 14,
-    padding: '12px 14px',
-    borderRadius: 16,
-    background: 'rgba(255,255,255,0.05)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-    fontFamily: "'Inter', sans-serif",
-  },
+  wrap: { marginTop: 14, padding: '12px 14px', borderRadius: 16, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: 8, fontFamily: "'Inter', sans-serif" },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
   title: { fontSize: '0.8rem', fontWeight: 700, color: 'rgba(247,249,255,0.8)' },
-  dueBadge: {
-    fontSize: '0.64rem', fontWeight: 800, padding: '3px 8px', borderRadius: 999,
-    background: 'rgba(255,216,77,0.15)', border: '1px solid rgba(255,216,77,0.3)', color: '#ffd84d',
-    textTransform: 'uppercase', letterSpacing: '0.08em',
-  },
+  dueBadge: { fontSize: '0.64rem', fontWeight: 800, padding: '3px 8px', borderRadius: 999, background: 'rgba(255,216,77,0.15)', border: '1px solid rgba(255,216,77,0.3)', color: '#ffd84d', textTransform: 'uppercase', letterSpacing: '0.08em' },
   todayRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   todayLabel: { fontSize: '0.74rem', color: 'rgba(216,226,255,0.5)', fontWeight: 600 },
   todayVal: { fontSize: '0.86rem', fontWeight: 700, color: '#57f0c0' },
   savedMsg: { fontSize: '0.78rem', fontWeight: 700, color: '#57f0c0' },
   inputRow: { display: 'flex', gap: 6, alignItems: 'center' },
-  smallInput: {
-    flex: 1,
-    minHeight: 36,
-    borderRadius: 10,
-    padding: '0 10px',
-    background: 'rgba(255,255,255,0.08)',
-    border: '1px solid rgba(255,255,255,0.12)',
-    color: '#f7f9ff',
-    fontSize: '0.78rem',
-    fontWeight: 600,
-    outline: 'none',
-    fontFamily: "'Inter', sans-serif",
-    minWidth: 0,
-  },
-  logBtn: {
-    minHeight: 36,
-    padding: '0 12px',
-    borderRadius: 10,
-    background: 'linear-gradient(135deg,#fff4b0,#ffd84d 30%,#fff 60%,#c6deff)',
-    color: '#06101f',
-    fontSize: '0.78rem',
-    fontWeight: 800,
-    cursor: 'pointer',
-    border: 'none',
-    whiteSpace: 'nowrap',
-    flexShrink: 0,
-  },
+  smallInput: { flex: 1, minHeight: 36, borderRadius: 10, padding: '0 10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: '#f7f9ff', fontSize: '0.78rem', fontWeight: 600, outline: 'none', fontFamily: "'Inter', sans-serif", minWidth: 0 },
+  logBtn: { minHeight: 36, padding: '0 12px', borderRadius: 10, background: 'linear-gradient(135deg,#fff4b0,#ffd84d 30%,#fff 60%,#c6deff)', color: '#06101f', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer', border: 'none', whiteSpace: 'nowrap', flexShrink: 0 },
   lastLog: { fontSize: '0.68rem', color: 'rgba(216,226,255,0.4)', fontWeight: 600 },
 };
 
@@ -732,24 +674,16 @@ function WeightTrendGraph({ weightLog, goalWeight, athlete }) {
   const points = weightLog.map((e, i) => ({ x: xScale(i), y: yScale(e.weight), ...e }));
   const polyline = points.map((p) => `${p.x},${p.y}`).join(' ');
 
-  // Area fill path
   const areaPath = points.length > 1
     ? `M ${points[0].x},${PAD.top + innerH} ` +
       points.map((p) => `L ${p.x},${p.y}`).join(' ') +
       ` L ${points[points.length - 1].x},${PAD.top + innerH} Z`
     : '';
 
-  // Y axis ticks
   const yTicks = 4;
   const yTickVals = Array.from({ length: yTicks + 1 }, (_, i) => minW + ((maxW - minW) / yTicks) * i);
-
-  // Goal weight Y
   const goalY = goalWeight ? yScale(goalWeight) : null;
-
-  // Trend: up/down/flat
-  const trend = weights.length >= 2
-    ? weights[weights.length - 1] - weights[0]
-    : 0;
+  const trend = weights.length >= 2 ? weights[weights.length - 1] - weights[0] : 0;
   const trendColor = trend < -0.5 ? '#57f0c0' : trend > 0.5 ? '#57a5ff' : '#ffd84d';
   const trendLabel = trend < -0.5 ? `↓ ${Math.abs(trend).toFixed(1)} lbs` : trend > 0.5 ? `↑ ${trend.toFixed(1)} lbs` : '→ stable';
 
@@ -762,87 +696,38 @@ function WeightTrendGraph({ weightLog, goalWeight, athlete }) {
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           {goalWeight && (
-            <div style={gStyles.goalChip}>
-              <span style={gStyles.goalDash}>- - -</span>
-              Goal: {goalWeight} lbs
-            </div>
+            <div style={gStyles.goalChip}><span style={gStyles.goalDash}>- - -</span>Goal: {goalWeight} lbs</div>
           )}
-          <div style={{ ...gStyles.trendChip, color: trendColor, borderColor: trendColor + '44', background: trendColor + '18' }}>
-            {trendLabel}
-          </div>
+          <div style={{ ...gStyles.trendChip, color: trendColor, borderColor: trendColor + '44', background: trendColor + '18' }}>{trendLabel}</div>
         </div>
       </div>
-
       <div style={{ overflowX: 'auto' }}>
         <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', minWidth: 300, display: 'block' }}>
-          {/* Y grid lines + labels */}
           {yTickVals.map((v, i) => (
             <g key={i}>
-              <line
-                x1={PAD.left} y1={yScale(v)} x2={PAD.left + innerW} y2={yScale(v)}
-                stroke="rgba(255,255,255,0.06)" strokeWidth="1"
-              />
-              <text x={PAD.left - 6} y={yScale(v) + 4} textAnchor="end"
-                fill="rgba(216,226,255,0.35)" fontSize="9" fontFamily="'Inter', sans-serif">
-                {Math.round(v)}
-              </text>
+              <line x1={PAD.left} y1={yScale(v)} x2={PAD.left + innerW} y2={yScale(v)} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+              <text x={PAD.left - 6} y={yScale(v) + 4} textAnchor="end" fill="rgba(216,226,255,0.35)" fontSize="9" fontFamily="'Inter', sans-serif">{Math.round(v)}</text>
             </g>
           ))}
-
-          {/* Area fill */}
-          {areaPath && (
-            <path d={areaPath} fill="url(#wGrad)" opacity="0.18" />
-          )}
-
-          {/* Gradient def */}
+          {areaPath && <path d={areaPath} fill="url(#wGrad)" opacity="0.18" />}
           <defs>
             <linearGradient id="wGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#8f7cff" />
               <stop offset="100%" stopColor="#8f7cff" stopOpacity="0" />
             </linearGradient>
           </defs>
-
-          {/* Goal weight dashed line */}
           {goalY !== null && (
             <g>
-              <line
-                x1={PAD.left} y1={goalY} x2={PAD.left + innerW} y2={goalY}
-                stroke="#ffd84d" strokeWidth="1.5" strokeDasharray="6 4" opacity="0.7"
-              />
-              <text x={PAD.left + innerW + 4} y={goalY + 4}
-                fill="#ffd84d" fontSize="9" fontFamily="'Inter', sans-serif" opacity="0.8">
-                goal
-              </text>
+              <line x1={PAD.left} y1={goalY} x2={PAD.left + innerW} y2={goalY} stroke="#ffd84d" strokeWidth="1.5" strokeDasharray="6 4" opacity="0.7" />
+              <text x={PAD.left + innerW + 4} y={goalY + 4} fill="#ffd84d" fontSize="9" fontFamily="'Inter', sans-serif" opacity="0.8">goal</text>
             </g>
           )}
-
-          {/* Line */}
-          {points.length > 1 && (
-            <polyline
-              points={polyline}
-              fill="none"
-              stroke="#8f7cff"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          )}
-
-          {/* Dots + X labels */}
+          {points.length > 1 && <polyline points={polyline} fill="none" stroke="#8f7cff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
           {points.map((p, i) => (
             <g key={i}>
               <circle cx={p.x} cy={p.y} r="4" fill="#8f7cff" stroke="rgba(10,16,36,0.9)" strokeWidth="2" />
-              <text x={p.x} y={PAD.top + innerH + 16} textAnchor="middle"
-                fill="rgba(216,226,255,0.4)" fontSize="8.5" fontFamily="'Inter', sans-serif">
-                {fmtShort(fromKey(p.date))}
-              </text>
-              {/* Tooltip weight label on hover approximated as always-shown for latest */}
-              {i === points.length - 1 && (
-                <text x={p.x} y={p.y - 9} textAnchor="middle"
-                  fill="#f7f9ff" fontSize="10" fontWeight="700" fontFamily="'Inter', sans-serif">
-                  {p.weight}
-                </text>
-              )}
+              <text x={p.x} y={PAD.top + innerH + 16} textAnchor="middle" fill="rgba(216,226,255,0.4)" fontSize="8.5" fontFamily="'Inter', sans-serif">{fmtShort(fromKey(p.date))}</text>
+              {i === points.length - 1 && <text x={p.x} y={p.y - 9} textAnchor="middle" fill="#f7f9ff" fontSize="10" fontWeight="700" fontFamily="'Inter', sans-serif">{p.weight}</text>}
             </g>
           ))}
         </svg>
@@ -852,42 +737,19 @@ function WeightTrendGraph({ weightLog, goalWeight, athlete }) {
 }
 
 const gStyles = {
-  wrap: {
-    marginTop: 18,
-    paddingTop: 16,
-    borderTop: '1px solid rgba(255,255,255,0.08)',
-  },
-  emptyWrap: {
-    marginTop: 16,
-    borderRadius: 24,
-    padding: '22px 20px',
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.08)',
-    textAlign: 'center',
-  },
-  emptyTitle: {
-    fontFamily: "'Space Grotesk', sans-serif",
-    fontSize: '0.95rem', fontWeight: 700, color: '#f7f9ff', marginBottom: 8,
-  },
+  wrap: { marginTop: 18, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.08)' },
+  emptyWrap: { marginTop: 16, borderRadius: 24, padding: '22px 20px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', textAlign: 'center' },
+  emptyTitle: { fontFamily: "'Space Grotesk', sans-serif", fontSize: '0.95rem', fontWeight: 700, color: '#f7f9ff', marginBottom: 8 },
   emptyMsg: { fontSize: '0.8rem', color: 'rgba(216,226,255,0.45)', fontWeight: 600, lineHeight: 1.5 },
   header: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
   title: { fontFamily: "'Space Grotesk', sans-serif", fontSize: '1rem', fontWeight: 700, color: '#f7f9ff', marginBottom: 2 },
   sub: { fontSize: '0.72rem', fontWeight: 600, color: 'rgba(216,226,255,0.45)' },
-  goalChip: {
-    display: 'flex', alignItems: 'center', gap: 6,
-    fontSize: '0.72rem', fontWeight: 700, color: '#ffd84d',
-    padding: '4px 10px', borderRadius: 999,
-    background: 'rgba(255,216,77,0.1)', border: '1px solid rgba(255,216,77,0.22)',
-  },
+  goalChip: { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', fontWeight: 700, color: '#ffd84d', padding: '4px 10px', borderRadius: 999, background: 'rgba(255,216,77,0.1)', border: '1px solid rgba(255,216,77,0.22)' },
   goalDash: { letterSpacing: 1, opacity: 0.7 },
-  trendChip: {
-    fontSize: '0.74rem', fontWeight: 800,
-    padding: '4px 10px', borderRadius: 999, border: '1px solid',
-  },
-  wmHint: { fontSize: '0.8rem', color: 'rgba(216,226,255,0.5)', fontWeight: 600, lineHeight: 1.5 },
+  trendChip: { fontSize: '0.74rem', fontWeight: 800, padding: '4px 10px', borderRadius: 999, border: '1px solid' },
 };
 
-/* ─── NEW: Calorie Tracker Component ─── */
+/* ─── Calorie Tracker Component ─── */
 function CalorieTracker({ athlete, cycleType, goalWeight }) {
   const todayKey = toKey(new Date());
   const storageKey = `calorie-meals-${todayKey}`;
@@ -917,13 +779,8 @@ function CalorieTracker({ athlete, cycleType, goalWeight }) {
     try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch {}
   }
 
-  function handleAddMeal(meal) {
-    saveMeals([...meals, meal]);
-  }
-
-  function removeMeal(id) {
-    saveMeals(meals.filter((m) => m.id !== id));
-  }
+  function handleAddMeal(meal) { saveMeals([...meals, meal]); }
+  function removeMeal(id) { saveMeals(meals.filter((m) => m.id !== id)); }
 
   const cycleLabel = cycleType ? cycleType.charAt(0).toUpperCase() + cycleType.slice(1) : 'Maintenance';
   const cycleDotColor = { bulk: '#57a5ff', cut: '#ff6fd8', maintain: '#57f0c0' }[cycleType] || 'rgba(255,255,255,0.4)';
@@ -931,9 +788,7 @@ function CalorieTracker({ athlete, cycleType, goalWeight }) {
   return (
     <>
       {showModal && <FoodCatalogModal onAdd={handleAddMeal} onClose={() => setShowModal(false)} />}
-
       <div style={styles.trackerWrap}>
-        {/* Header */}
         <div style={styles.trackerHeader}>
           <div>
             <div style={styles.trackerTitle}>Daily Calories &amp; Macros</div>
@@ -948,7 +803,6 @@ function CalorieTracker({ athlete, cycleType, goalWeight }) {
           </div>
         </div>
 
-        {/* Ring + meals side by side */}
         <div style={styles.trackerBody}>
           <div style={styles.ringWrap}>
             <CalorieRing consumed={consumed} goal={goal} />
@@ -986,10 +840,8 @@ function CalorieTracker({ athlete, cycleType, goalWeight }) {
           </div>
         </div>
 
-        {/* AI Estimator */}
         <AiMealEstimator onAdd={handleAddMeal} />
 
-        {/* Macro bars */}
         <div style={styles.macroBarsWrap}>
           <div style={styles.macroBarsTitle}>Macros</div>
           <MacroBar label="Protein" consumed={macroConsumed.protein} goal={macroGoals.protein} color="#57a5ff" />
@@ -1002,75 +854,16 @@ function CalorieTracker({ athlete, cycleType, goalWeight }) {
   );
 }
 
-/* ─── Inline styles (scoped, no conflicts with existing CSS) ─── */
+/* ─── Inline styles ─── */
 const styles = {
-  /* --- tracker card --- */
-  trackerWrap: {
-    marginTop: 20,
-    borderRadius: 28,
-    padding: '22px 22px 20px',
-    background: 'linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.07) 100%)',
-    backdropFilter: 'blur(24px) saturate(140%)',
-    WebkitBackdropFilter: 'blur(24px) saturate(140%)',
-    border: '1px solid rgba(255,255,255,0.12)',
-    boxShadow: '0 10px 30px rgba(0,0,0,0.22)',
-    fontFamily: "'Inter', sans-serif",
-  },
-  trackerHeader: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 20,
-  },
-  trackerTitle: {
-    fontFamily: "'Space Grotesk', sans-serif",
-    fontSize: '1.1rem',
-    fontWeight: 700,
-    color: '#f7f9ff',
-    letterSpacing: '0.02em',
-    marginBottom: 4,
-  },
-  trackerSub: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    fontSize: '0.76rem',
-    fontWeight: 600,
-    color: 'rgba(216,226,255,0.56)',
-  },
-  cycleDot: {
-    display: 'inline-block',
-    width: 8,
-    height: 8,
-    borderRadius: '50%',
-    flexShrink: 0,
-  },
-  dateChip: {
-    padding: '6px 12px',
-    borderRadius: 999,
-    background: 'rgba(255,255,255,0.08)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    fontSize: '0.72rem',
-    fontWeight: 700,
-    color: 'rgba(247,249,255,0.7)',
-    whiteSpace: 'nowrap',
-  },
-  trackerBody: {
-    display: 'flex',
-    gap: 24,
-    alignItems: 'flex-start',
-    marginBottom: 20,
-    flexWrap: 'wrap',
-  },
-  ringWrap: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 10,
-    flexShrink: 0,
-  },
+  trackerWrap: { marginTop: 20, borderRadius: 28, padding: '22px 22px 20px', background: 'linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.07) 100%)', backdropFilter: 'blur(24px) saturate(140%)', WebkitBackdropFilter: 'blur(24px) saturate(140%)', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 10px 30px rgba(0,0,0,0.22)', fontFamily: "'Inter', sans-serif" },
+  trackerHeader: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
+  trackerTitle: { fontFamily: "'Space Grotesk', sans-serif", fontSize: '1.1rem', fontWeight: 700, color: '#f7f9ff', letterSpacing: '0.02em', marginBottom: 4 },
+  trackerSub: { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.76rem', fontWeight: 600, color: 'rgba(216,226,255,0.56)' },
+  cycleDot: { display: 'inline-block', width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
+  dateChip: { padding: '6px 12px', borderRadius: 999, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', fontSize: '0.72rem', fontWeight: 700, color: 'rgba(247,249,255,0.7)', whiteSpace: 'nowrap' },
+  trackerBody: { display: 'flex', gap: 24, alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap' },
+  ringWrap: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, flexShrink: 0 },
   ringMeta: { display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' },
   ringMetaItem: { display: 'flex', alignItems: 'center', gap: 6 },
   ringMetaDot: { width: 7, height: 7, borderRadius: '50%', background: 'rgba(255,255,255,0.3)', flexShrink: 0 },
@@ -1078,55 +871,13 @@ const styles = {
   mealsCol: { flex: 1, minWidth: 180 },
   emptyMeals: { fontSize: '0.82rem', color: 'rgba(216,226,255,0.4)', fontWeight: 600, padding: '14px 0', lineHeight: 1.5 },
   mealList: { display: 'flex', flexDirection: 'column', gap: 7, maxHeight: 240, overflowY: 'auto', paddingRight: 4 },
-  mealRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    padding: '9px 12px',
-    borderRadius: 14,
-    background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.09)',
-  },
-  mealName: {
-    fontSize: '0.86rem',
-    fontWeight: 600,
-    color: 'rgba(247,249,255,0.85)',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-  },
-  mealMacroLine: {
-    display: 'flex',
-    gap: 8,
-    marginTop: 2,
-    fontSize: '0.72rem',
-    fontWeight: 700,
-  },
+  mealRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 14, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)' },
+  mealName: { fontSize: '0.86rem', fontWeight: 600, color: 'rgba(247,249,255,0.85)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  mealMacroLine: { display: 'flex', gap: 8, marginTop: 2, fontSize: '0.72rem', fontWeight: 700 },
   mealCals: { fontSize: '0.82rem', fontWeight: 700, color: '#57f0c0', whiteSpace: 'nowrap' },
-  mealRemove: {
-    width: 24, height: 24, borderRadius: '50%',
-    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)',
-    color: 'rgba(247,249,255,0.5)', cursor: 'pointer', fontSize: '1rem',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0, padding: 0,
-  },
-  /* --- macro bars --- */
-  macroBarsWrap: {
-    borderTop: '1px solid rgba(255,255,255,0.08)',
-    paddingTop: 16,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10,
-  },
-  macroBarsTitle: {
-    fontFamily: "'Space Grotesk', sans-serif",
-    fontSize: '0.72rem',
-    fontWeight: 800,
-    color: 'rgba(216,226,255,0.5)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.18em',
-    marginBottom: 2,
-  },
+  mealRemove: { width: 24, height: 24, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(247,249,255,0.5)', cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: 0 },
+  macroBarsWrap: { borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 10 },
+  macroBarsTitle: { fontFamily: "'Space Grotesk', sans-serif", fontSize: '0.72rem', fontWeight: 800, color: 'rgba(216,226,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.18em', marginBottom: 2 },
   macroBarWrap: { display: 'flex', flexDirection: 'column', gap: 5 },
   macroBarHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   macroBarLabel: { fontSize: '0.78rem', fontWeight: 700, color: 'rgba(247,249,255,0.7)' },
@@ -1135,226 +886,51 @@ const styles = {
   macroTrack: { height: 8, borderRadius: 999, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' },
   macroFill: { height: '100%', borderRadius: 999 },
   macroNote: { fontSize: '0.7rem', color: 'rgba(216,226,255,0.35)', fontWeight: 600, marginTop: 4 },
-  /* --- shared inputs / buttons --- */
-  addInput: {
-    flex: 1,
-    minWidth: 120,
-    minHeight: 44,
-    borderRadius: 14,
-    padding: '0 14px',
-    background: 'linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.06))',
-    border: '1px solid rgba(255,255,255,0.12)',
-    color: '#f7f9ff',
-    fontSize: '0.86rem',
-    fontWeight: 600,
-    outline: 'none',
-    fontFamily: "'Inter', sans-serif",
-    boxSizing: 'border-box',
-    width: '100%',
-  },
-  addBtn: {
-    minHeight: 44,
-    padding: '0 18px',
-    borderRadius: 14,
-    background: 'linear-gradient(135deg, #fff4b0 0%, #ffd84d 18%, #ffffff 40%, #c6deff 74%, #97b6ff 100%)',
-    color: '#06101f',
-    fontFamily: "'Space Grotesk', sans-serif",
-    fontSize: '0.9rem',
-    fontWeight: 700,
-    cursor: 'pointer',
-    border: 'none',
-    boxShadow: '0 10px 24px rgba(255,216,77,0.15)',
-    whiteSpace: 'nowrap',
-  },
+  addInput: { flex: 1, minWidth: 120, minHeight: 44, borderRadius: 14, padding: '0 14px', background: 'linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.06))', border: '1px solid rgba(255,255,255,0.12)', color: '#f7f9ff', fontSize: '0.86rem', fontWeight: 600, outline: 'none', fontFamily: "'Inter', sans-serif", boxSizing: 'border-box', width: '100%' },
+  addBtn: { minHeight: 44, padding: '0 18px', borderRadius: 14, background: 'linear-gradient(135deg, #fff4b0 0%, #ffd84d 18%, #ffffff 40%, #c6deff 74%, #97b6ff 100%)', color: '#06101f', fontFamily: "'Space Grotesk', sans-serif", fontSize: '0.9rem', fontWeight: 700, cursor: 'pointer', border: 'none', boxShadow: '0 10px 24px rgba(255,216,77,0.15)', whiteSpace: 'nowrap' },
   errorText: { marginTop: 8, fontSize: '0.76rem', fontWeight: 700, color: '#ff9f63' },
-  /* --- modal --- */
-  modalOverlay: {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 999,
-    background: 'rgba(5,8,22,0.72)',
-    backdropFilter: 'blur(6px)',
-    WebkitBackdropFilter: 'blur(6px)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-  },
-  modalBox: {
-    width: '100%',
-    maxWidth: 520,
-    maxHeight: '85vh',
-    borderRadius: 26,
-    background: 'linear-gradient(180deg, rgba(20,28,52,0.98), rgba(12,18,36,0.98))',
-    border: '1px solid rgba(255,255,255,0.14)',
-    boxShadow: '0 30px 80px rgba(0,0,0,0.5)',
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    fontFamily: "'Inter', sans-serif",
-  },
-  modalHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '18px 20px 14px',
-    borderBottom: '1px solid rgba(255,255,255,0.08)',
-    flexShrink: 0,
-  },
-  modalTitle: {
-    fontFamily: "'Space Grotesk', sans-serif",
-    fontSize: '1.05rem',
-    fontWeight: 700,
-    color: '#f7f9ff',
-  },
-  modalClose: {
-    width: 32, height: 32, borderRadius: '50%',
-    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)',
-    color: '#f7f9ff', cursor: 'pointer', fontSize: '1.1rem',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-  },
+  modalOverlay: { position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(5,8,22,0.72)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  modalBox: { width: '100%', maxWidth: 520, maxHeight: '85vh', borderRadius: 26, background: 'linear-gradient(180deg, rgba(20,28,52,0.98), rgba(12,18,36,0.98))', border: '1px solid rgba(255,255,255,0.14)', boxShadow: '0 30px 80px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: "'Inter', sans-serif" },
+  modalHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 },
+  modalTitle: { fontFamily: "'Space Grotesk', sans-serif", fontSize: '1.05rem', fontWeight: 700, color: '#f7f9ff' },
+  modalClose: { width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', color: '#f7f9ff', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' },
   modalTabs: { display: 'flex', gap: 8, padding: '12px 20px 0', flexShrink: 0 },
-  modalTab: {
-    flex: 1,
-    minHeight: 38,
-    borderRadius: 12,
-    background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.08)',
-    color: 'rgba(247,249,255,0.6)',
-    fontSize: '0.82rem',
-    fontWeight: 700,
-    cursor: 'pointer',
-  },
-  modalTabActive: {
-    background: 'linear-gradient(135deg, rgba(143,124,255,0.2), rgba(85,214,255,0.12))',
-    border: '1px solid rgba(143,124,255,0.3)',
-    color: '#f7f9ff',
-  },
-  modalSearch: {
-    margin: '12px 20px 0',
-    minHeight: 42,
-    borderRadius: 12,
-    padding: '0 14px',
-    background: 'rgba(255,255,255,0.07)',
-    border: '1px solid rgba(255,255,255,0.12)',
-    color: '#f7f9ff',
-    fontSize: '0.86rem',
-    fontWeight: 600,
-    outline: 'none',
-    fontFamily: "'Inter', sans-serif",
-    flexShrink: 0,
-  },
+  modalTab: { flex: 1, minHeight: 38, borderRadius: 12, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(247,249,255,0.6)', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' },
+  modalTabActive: { background: 'linear-gradient(135deg, rgba(143,124,255,0.2), rgba(85,214,255,0.12))', border: '1px solid rgba(143,124,255,0.3)', color: '#f7f9ff' },
+  modalSearch: { margin: '12px 20px 0', minHeight: 42, borderRadius: 12, padding: '0 14px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', color: '#f7f9ff', fontSize: '0.86rem', fontWeight: 600, outline: 'none', fontFamily: "'Inter', sans-serif", flexShrink: 0 },
   tagRow: { display: 'flex', gap: 6, padding: '10px 20px 0', flexWrap: 'wrap', flexShrink: 0 },
-  tagBtn: {
-    padding: '5px 12px',
-    borderRadius: 999,
-    background: 'rgba(255,255,255,0.07)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    color: 'rgba(247,249,255,0.55)',
-    fontSize: '0.74rem',
-    fontWeight: 700,
-    cursor: 'pointer',
-  },
-  tagBtnActive: {
-    background: 'linear-gradient(180deg, rgba(87,165,255,0.2), rgba(255,255,255,0.08))',
-    border: '1px solid rgba(87,165,255,0.3)',
-    color: '#f7f9ff',
-  },
-  foodList: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: '10px 20px 16px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 7,
-  },
+  tagBtn: { padding: '5px 12px', borderRadius: 999, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(247,249,255,0.55)', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer' },
+  tagBtnActive: { background: 'linear-gradient(180deg, rgba(87,165,255,0.2), rgba(255,255,255,0.08))', border: '1px solid rgba(87,165,255,0.3)', color: '#f7f9ff' },
+  foodList: { flex: 1, overflowY: 'auto', padding: '10px 20px 16px', display: 'flex', flexDirection: 'column', gap: 7 },
   noResults: { fontSize: '0.82rem', color: 'rgba(216,226,255,0.4)', fontWeight: 600, padding: '20px 0', textAlign: 'center' },
-  foodRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    padding: '10px 12px',
-    borderRadius: 14,
-    background: 'rgba(255,255,255,0.05)',
-    border: '1px solid rgba(255,255,255,0.08)',
-  },
+  foodRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 14, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' },
   foodInfo: { flex: 1, minWidth: 0 },
   foodName: { fontSize: '0.86rem', fontWeight: 600, color: 'rgba(247,249,255,0.88)', marginBottom: 3 },
   foodMacros: { display: 'flex', gap: 10, fontSize: '0.72rem', fontWeight: 700 },
-  foodAddBtn: {
-    minHeight: 34,
-    padding: '0 12px',
-    borderRadius: 10,
-    background: 'linear-gradient(135deg, #fff4b0, #ffd84d 30%, #fff 60%, #c6deff)',
-    color: '#06101f',
-    fontSize: '0.78rem',
-    fontWeight: 800,
-    cursor: 'pointer',
-    border: 'none',
-    whiteSpace: 'nowrap',
-    flexShrink: 0,
-  },
+  foodAddBtn: { minHeight: 34, padding: '0 12px', borderRadius: 10, background: 'linear-gradient(135deg, #fff4b0, #ffd84d 30%, #fff 60%, #c6deff)', color: '#06101f', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer', border: 'none', whiteSpace: 'nowrap', flexShrink: 0 },
   customForm: { padding: '14px 20px 20px', display: 'flex', flexDirection: 'column', gap: 12 },
   customGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
-  /* --- AI tab --- */
-  aiTabWrap: { padding: '14px 20px 20px', display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' },
-  aiHint: { fontSize: '0.8rem', fontWeight: 600, color: 'rgba(216,226,255,0.55)', lineHeight: 1.5 },
-  aiExamples: { display: 'flex', flexWrap: 'wrap', gap: 7 },
-  aiExampleChip: {
-    padding: '5px 12px', borderRadius: 999,
-    background: 'rgba(143,124,255,0.12)', border: '1px solid rgba(143,124,255,0.22)',
-    color: 'rgba(247,249,255,0.75)', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
-  },
+  customLabel: { fontSize: '0.7rem', fontWeight: 800, color: 'rgba(216,226,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 5 },
   aiInputRow: { display: 'flex', gap: 8, alignItems: 'center' },
   aiLoadingWrap: { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' },
-  aiSpinner: {
-    width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
-    border: '2px solid rgba(255,255,255,0.12)',
-    borderTopColor: '#8f7cff',
-    animation: 'spin 0.8s linear infinite',
-  },
+  aiSpinner: { width: 18, height: 18, borderRadius: '50%', flexShrink: 0, border: '2px solid rgba(255,255,255,0.12)', borderTopColor: '#8f7cff', animation: 'spin 0.8s linear infinite' },
   aiLoadingText: { fontSize: '0.8rem', fontWeight: 600, color: 'rgba(216,226,255,0.5)' },
-  aiResultCard: {
-    borderRadius: 18, padding: '14px 16px',
-    background: 'linear-gradient(135deg, rgba(143,124,255,0.12), rgba(85,214,255,0.08))',
-    border: '1px solid rgba(143,124,255,0.22)',
-    display: 'flex', flexDirection: 'column', gap: 10,
-  },
+  aiResultCard: { borderRadius: 18, padding: '14px 16px', background: 'linear-gradient(135deg, rgba(143,124,255,0.12), rgba(85,214,255,0.08))', border: '1px solid rgba(143,124,255,0.22)', display: 'flex', flexDirection: 'column', gap: 10 },
   aiResultName: { fontSize: '0.95rem', fontWeight: 700, color: '#f7f9ff' },
   aiResultMacros: { display: 'flex', gap: 8, flexWrap: 'wrap' },
-  aiMacroPill: {
-    display: 'flex', flexDirection: 'column', alignItems: 'center',
-    padding: '7px 12px', borderRadius: 12,
-    background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-    minWidth: 60,
-  },
+  aiMacroPill: { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '7px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', minWidth: 60 },
   aiMacroVal: { fontSize: '1rem', fontWeight: 800, color: '#f7f9ff', lineHeight: 1.1 },
   aiMacroLbl: { fontSize: '0.66rem', fontWeight: 700, color: 'rgba(216,226,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 2 },
   aiResultNote: { fontSize: '0.74rem', fontWeight: 600, color: 'rgba(216,226,255,0.45)', lineHeight: 1.4 },
   aiResultActions: { display: 'flex', gap: 8, alignItems: 'center' },
-  aiEstimatorWrap: {
-    marginTop: 16,
-    borderRadius: 22,
-    padding: '16px 18px 18px',
-    background: 'linear-gradient(135deg, rgba(143,124,255,0.10), rgba(85,214,255,0.07))',
-    border: '1px solid rgba(143,124,255,0.2)',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-    fontFamily: "'Inter', sans-serif",
-  },
+  aiEstimatorWrap: { marginTop: 16, borderRadius: 22, padding: '16px 18px 18px', background: 'linear-gradient(135deg, rgba(143,124,255,0.10), rgba(85,214,255,0.07))', border: '1px solid rgba(143,124,255,0.2)', display: 'flex', flexDirection: 'column', gap: 12, fontFamily: "'Inter', sans-serif" },
   aiEstimatorHeader: { display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' },
-  aiEstimatorTitle: {
-    fontFamily: "'Space Grotesk', sans-serif",
-    fontSize: '0.95rem', fontWeight: 700, color: '#f7f9ff',
-  },
+  aiEstimatorTitle: { fontFamily: "'Space Grotesk', sans-serif", fontSize: '0.95rem', fontWeight: 700, color: '#f7f9ff' },
   aiEstimatorSub: { fontSize: '0.74rem', fontWeight: 600, color: 'rgba(216,226,255,0.5)' },
-  aiRetryBtn: {
-    minHeight: 44, padding: '0 16px', borderRadius: 14,
-    background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)',
-    color: 'rgba(247,249,255,0.65)', fontSize: '0.86rem', fontWeight: 700, cursor: 'pointer',
-  },
-    customLabel: { fontSize: '0.7rem', fontWeight: 800, color: 'rgba(216,226,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 5 },
+  aiExamples: { display: 'flex', flexWrap: 'wrap', gap: 7 },
+  aiExampleChip: { padding: '5px 12px', borderRadius: 999, background: 'rgba(143,124,255,0.12)', border: '1px solid rgba(143,124,255,0.22)', color: 'rgba(247,249,255,0.75)', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer' },
+  aiRetryBtn: { minHeight: 44, padding: '0 16px', borderRadius: 14, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(247,249,255,0.65)', fontSize: '0.86rem', fontWeight: 700, cursor: 'pointer' },
+  wmHint: { fontSize: '0.8rem', color: 'rgba(216,226,255,0.5)', fontWeight: 600, lineHeight: 1.5 },
 };
 
 /* ─── main component ─── */
@@ -1367,10 +943,6 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
 
   const trackPeriod = athlete?.cycleTracking === true;
   const showBulkCut = athlete?.nutritionGuidance && athlete?.doesBulkCutCycles;
-
-  /* Page is disabled only when there is nothing at all to show */
-  // Page only fully disabled if nutritionGuidance is off AND no cycle tracking
-  // doesBulkCutCycles=false just hides cycle-specific UI, not the whole page
   const nutritionEnabled = (athlete?.nutritionGuidance) || trackPeriod;
 
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -1381,18 +953,9 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
   const [customDays, setCustomDays] = useState(21);
 
   const blocks = nutrition.bulkCutBlocks ?? [];
-  const markedPeriodDays = useMemo(
-    () => new Set(nutrition.periodDays ?? []),
-    [nutrition.periodDays]
-  );
-
-  const predictedPeriodKeys = useMemo(
-    () => (trackPeriod ? buildPredictedKeys(markedPeriodDays) : new Set()),
-    [trackPeriod, markedPeriodDays]
-  );
-
+  const markedPeriodDays = useMemo(() => new Set(nutrition.periodDays ?? []), [nutrition.periodDays]);
+  const predictedPeriodKeys = useMemo(() => (trackPeriod ? buildPredictedKeys(markedPeriodDays) : new Set()), [trackPeriod, markedPeriodDays]);
   const periodMeta = useMemo(() => computePeriodMeta(markedPeriodDays), [markedPeriodDays]);
-
   const cells = useMemo(() => buildCells(viewYear, viewMonth), [viewYear, viewMonth]);
 
   function blockAt(d) {
@@ -1414,10 +977,7 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
     return { start, end, pct, week, totalWeeks, type: todayBlock.type };
   }, [todayBlock, today]);
 
-  const getDur = useCallback(
-    () => (activeDur === 0 ? customDays : activeDur),
-    [activeDur, customDays]
-  );
+  const getDur = useCallback(() => (activeDur === 0 ? customDays : activeDur), [activeDur, customDays]);
 
   function prevMonth() {
     if (viewMonth === 0) { setViewMonth(11); setViewYear((y) => y - 1); }
@@ -1428,13 +988,11 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
     else setViewMonth((m) => m + 1);
   }
 
-  // Weight log modal state (separate from cycle apply modal)
   const [showWeightLogModal, setShowWeightLogModal] = useState(false);
   const [weightLogDate, setWeightLogDate] = useState(null);
   const [weightLogValue, setWeightLogValue] = useState('');
   const [weightLogErr, setWeightLogErr] = useState('');
 
-  // REPLACE with:
   function handleDayClick(date) {
     const isPast = date < today;
     if (showBulkCut && !isPast) setSelectedDate(date);
@@ -1472,7 +1030,6 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
     setNutrition((prev) => ({ ...prev, periodDays: [...next] }));
   }
 
-  // Weight modal state
   const [showWeightModal, setShowWeightModal] = useState(false);
   const [pendingCycleWeight, setPendingCycleWeight] = useState('');
   const [pendingGoalWeight, setPendingGoalWeight] = useState('');
@@ -1480,7 +1037,6 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
 
   function applyBlock() {
     if (!selectedDate) return;
-    // Open weight modal first — cycle saves only after weights are entered
     setPendingCycleWeight(String(athlete?.bodyweight || ''));
     setPendingGoalWeight(String(nutrition.goalWeight || ''));
     setWeightModalErr('');
@@ -1498,7 +1054,6 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
     const nb = { type: activeType, start: startKey, end: endKey, startWeight: cw, goalWeight: gw };
     const filtered = blocks.filter((b) => nb.end < b.start || nb.start > b.end);
     const sorted = [...filtered, nb].sort((a, b) => a.start.localeCompare(b.start));
-    // Log a weigh-in entry
     const newEntry = { date: startKey, weight: cw };
     const existingLogs = nutrition.weightLog ?? [];
     const dedupedLogs = existingLogs.filter((e) => e.date !== startKey);
@@ -1517,9 +1072,7 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
     const k = toKey(selectedDate);
     setNutrition((prev) => ({
       ...prev,
-      bulkCutBlocks: (prev.bulkCutBlocks ?? []).filter(
-        (b) => !(k >= b.start && k <= b.end)
-      ),
+      bulkCutBlocks: (prev.bulkCutBlocks ?? []).filter((b) => !(k >= b.start && k <= b.end)),
     }));
     setSelectedDate(null);
   }
@@ -1530,8 +1083,7 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
 
   const periodStatsText = useMemo(() => {
     if (!trackPeriod) return '';
-    if (markedPeriodDays.size === 0)
-      return 'Tap the droplet on any day to log your period. Predictions appear automatically.';
+    if (markedPeriodDays.size === 0) return 'Tap the droplet on any day to log your period. Predictions appear automatically.';
     const { periods, avgCycle, avgLen } = periodMeta;
     const lastStart = periods.length > 0 ? fromKey(periods[periods.length - 1][0]) : null;
     const nextPredicted = lastStart ? addDays(lastStart, avgCycle) : null;
@@ -1543,7 +1095,6 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
     );
   }, [trackPeriod, markedPeriodDays, periodMeta]);
 
-  /* ── Disabled state ── */
   if (!nutritionEnabled) {
     return (
       <div className="screen nutrition-screen">
@@ -1552,14 +1103,9 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
             <div className="nutr-disabled-icon">🥗</div>
             <h2 className="nutr-disabled-title">Nutrition tracking is off</h2>
             <p className="nutr-disabled-body">
-              Enable <strong>Nutrition Guidance</strong> or{' '}
-              <strong>Cycle Tracking</strong> in your profile to use this page.
+              Enable <strong>Nutrition Guidance</strong> or <strong>Cycle Tracking</strong> in your profile to use this page.
             </p>
-            <button
-              className="nutr-apply-btn"
-              style={{ maxWidth: 220, margin: '0 auto' }}
-              onClick={() => goToScreen?.('profile')}
-            >
+            <button className="nutr-apply-btn" style={{ maxWidth: 220, margin: '0 auto' }} onClick={() => goToScreen?.('profile')}>
               Go to Profile
             </button>
           </div>
@@ -1568,12 +1114,10 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
     );
   }
 
-  /* ── Main page ── */
   return (
     <div className="screen nutrition-screen">
       <div className="nutr-shell">
 
-        {/* Banner — only when bulk/cut is enabled */}
         {showBulkCut && (
           <div className="nutr-banner">
             <div className="nutr-banner-label">Current cycle</div>
@@ -1585,10 +1129,7 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
                   {' '}— week {currentCycleInfo.week} of {currentCycleInfo.totalWeeks}
                 </div>
                 <div className="nutr-prog-wrap">
-                  <div
-                    className={`nutr-prog-fill nutr-prog-${currentCycleInfo.type}`}
-                    style={{ width: `${currentCycleInfo.pct}%` }}
-                  />
+                  <div className={`nutr-prog-fill nutr-prog-${currentCycleInfo.type}`} style={{ width: `${currentCycleInfo.pct}%` }} />
                 </div>
                 <div className="nutr-banner-meta">
                   <span>Started {fmtShort(currentCycleInfo.start)}</span>
@@ -1601,12 +1142,8 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
           </div>
         )}
 
-        <div
-          className="nutr-body"
-          style={!showBulkCut ? { gridTemplateColumns: '1fr' } : {}}
-        >
+        <div className="nutr-body" style={!showBulkCut ? { gridTemplateColumns: '1fr' } : {}}>
 
-          {/* Calendar */}
           <div className="nutr-cal-card">
             <div className="nutr-cal-nav">
               <button className="nutr-nav-btn" onClick={prevMonth}>←</button>
@@ -1621,7 +1158,6 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
             <div className="nutr-cal-grid">
               {cells.map((date, i) => {
                 if (!date) return <div key={`e-${i}`} className="nutr-day-empty" />;
-
                 const isPast = date < today;
                 const isToday = toKey(date) === toKey(today);
                 const key = toKey(date);
@@ -1637,51 +1173,31 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
                 if (isToday) cellClass += ' nutr-day-today';
 
                 return (
-                  <div
-                    key={key}
-                    className={cellClass}
-                    onClick={() => handleDayClick(date)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === 'Enter' && handleDayClick(date)}
-                  >
+                  <div key={key} className={cellClass} onClick={() => handleDayClick(date)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && handleDayClick(date)}>
                     <span className="nutr-day-num">{date.getDate()}</span>
                     {b && <span className="nutr-day-tag">{b.type}</span>}
                     {isToday && <span className="nutr-today-dot" />}
                     {(isPast || isToday) && (
                       <button
-                        className={[
-                          'nutr-weight-btn',
-                          (nutrition.weightLog ?? []).some((e) => e.date === key) ? 'nutr-weight-btn-logged' : '',
-                        ].join(' ').trim()}
+                        className={['nutr-weight-btn', (nutrition.weightLog ?? []).some((e) => e.date === key) ? 'nutr-weight-btn-logged' : ''].join(' ').trim()}
                         onClick={(e) => {
                           e.stopPropagation();
-                          const key = toKey(date);
                           const existing = (nutrition.weightLog ?? []).find((e) => e.date === key);
                           setWeightLogDate(date);
                           setWeightLogValue(existing ? String(existing.weight) : '');
                           setWeightLogErr('');
                           setShowWeightLogModal(true);
                         }}
-                        title={
-                          (nutrition.weightLog ?? []).some((e) => e.date === key)
-                            ? `Edit weight · ${(nutrition.weightLog.find(e => e.date === key))?.weight} lbs`
-                            : 'Log weight'
-                        }
+                        title={(nutrition.weightLog ?? []).some((e) => e.date === key) ? `Edit weight · ${(nutrition.weightLog.find(e => e.date === key))?.weight} lbs` : 'Log weight'}
                         tabIndex={-1}
                         aria-label="Log weight"
                       >
                         {(nutrition.weightLog ?? []).some((e) => e.date === key) ? '⚖' : '+'}
                       </button>
                     )}
-
                     {trackPeriod && (
                       <button
-                        className={[
-                          'nutr-droplet',
-                          isActualPeriod ? 'nutr-droplet-on' : '',
-                          isPredicted ? 'nutr-droplet-predicted' : '',
-                        ].join(' ').trim()}
+                        className={['nutr-droplet', isActualPeriod ? 'nutr-droplet-on' : '', isPredicted ? 'nutr-droplet-predicted' : ''].join(' ').trim()}
                         onClick={(e) => handleDropletClick(e, date)}
                         title={isActualPeriod ? 'Remove period log' : 'Log period day'}
                         tabIndex={-1}
@@ -1695,7 +1211,6 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
               })}
             </div>
 
-            {/* Legend */}
             <div className="nutr-legend">
               {showBulkCut && (
                 <>
@@ -1704,121 +1219,63 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
                   <div className="nutr-leg-item"><div className="nutr-leg-swatch nutr-swatch-maintain" />Maintain</div>
                 </>
               )}
-              {trackPeriod && (
-                <div className="nutr-leg-item"><DropletIcon filled /><span style={{ marginLeft: 4 }}>Period</span></div>
-              )}
-              {showPredictedLegend && (
-                <div className="nutr-leg-item"><DropletIcon predicted /><span style={{ marginLeft: 4 }}>Predicted</span></div>
-              )}
+              {trackPeriod && <div className="nutr-leg-item"><DropletIcon filled /><span style={{ marginLeft: 4 }}>Period</span></div>}
+              {showPredictedLegend && <div className="nutr-leg-item"><DropletIcon predicted /><span style={{ marginLeft: 4 }}>Predicted</span></div>}
             </div>
 
-            {trackPeriod && (
-              <div className="nutr-period-stats-bar">{periodStatsText}</div>
-            )}
+            {trackPeriod && <div className="nutr-period-stats-bar">{periodStatsText}</div>}
 
-            {/* Weight trend graph — shown inside the calendar card */}
-            <WeightTrendGraph
-              weightLog={nutrition.weightLog ?? []}
-              goalWeight={nutrition.goalWeight ?? null}
-              athlete={athlete}
-            />
+            <WeightTrendGraph weightLog={nutrition.weightLog ?? []} goalWeight={nutrition.goalWeight ?? null} athlete={athlete} />
           </div>
 
-          {/* Sidebar — only when bulk/cut is enabled */}
           {!showBulkCut && (
             <div style={{ padding: '14px 0 4px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(247,249,255,0.6)', fontFamily: "'Space Grotesk', sans-serif" }}>
-                Weight tracking
-              </div>
-              <div style={{ fontSize: '0.74rem', color: 'rgba(216,226,255,0.45)', fontWeight: 600, lineHeight: 1.5, fontFamily: "'Inter', sans-serif" }}>
-                Click any past or today's date on the calendar to log your weight and build your trend graph.
-              </div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(247,249,255,0.6)', fontFamily: "'Space Grotesk', sans-serif" }}>Weight tracking</div>
+              <div style={{ fontSize: '0.74rem', color: 'rgba(216,226,255,0.45)', fontWeight: 600, lineHeight: 1.5, fontFamily: "'Inter', sans-serif" }}>Click any past or today's date on the calendar to log your weight and build your trend graph.</div>
             </div>
           )}
+
           {showBulkCut && (
             <div className="nutr-sidebar">
               <div className="nutr-panel">
                 <div className="nutr-panel-title">Cycle editor</div>
-
                 <div className="nutr-sel-box">
-                  {selectedDate
-                    ? <>Starting <strong>{fmtShort(selectedDate)}</strong></>
-                    : 'Click a future date to begin'}
+                  {selectedDate ? <>Starting <strong>{fmtShort(selectedDate)}</strong></> : 'Click a future date to begin'}
                 </div>
-
                 <div className="nutr-field">
                   <div className="nutr-field-label">Type</div>
                   <div className="nutr-seg">
                     {['bulk', 'cut', 'maintain'].map((t) => (
-                      <button
-                        key={t}
-                        className={`nutr-seg-btn nutr-seg-${t}${activeType === t ? ' nutr-seg-active' : ''}`}
-                        onClick={() => setActiveType(t)}
-                      >
+                      <button key={t} className={`nutr-seg-btn nutr-seg-${t}${activeType === t ? ' nutr-seg-active' : ''}`} onClick={() => setActiveType(t)}>
                         {t.charAt(0).toUpperCase() + t.slice(1)}
                       </button>
                     ))}
                   </div>
                 </div>
-
                 <div className="nutr-field">
                   <div className="nutr-field-label">Duration</div>
                   <div className="nutr-dur-grid">
                     {DURATIONS.map(({ label, days }) => (
-                      <button
-                        key={days}
-                        className={`nutr-dur-btn${activeDur === days ? ' nutr-dur-active' : ''}`}
-                        onClick={() => setActiveDur(days)}
-                      >
-                        {label}
-                      </button>
+                      <button key={days} className={`nutr-dur-btn${activeDur === days ? ' nutr-dur-active' : ''}`} onClick={() => setActiveDur(days)}>{label}</button>
                     ))}
                   </div>
                 </div>
-
                 {activeDur === 0 && (
                   <div className="nutr-field">
                     <div className="nutr-field-label">Custom days</div>
-                    <input
-                      className="nutr-input"
-                      type="number"
-                      min={7}
-                      max={180}
-                      value={customDays}
-                      onChange={(e) => setCustomDays(Math.max(7, parseInt(e.target.value) || 7))}
-                    />
+                    <input className="nutr-input" type="number" min={7} max={180} value={customDays} onChange={(e) => setCustomDays(Math.max(7, parseInt(e.target.value) || 7))} />
                   </div>
                 )}
-
                 <div className="nutr-preview-box">
-                  {selectedDate && previewEnd
-                    ? `${fmtShort(selectedDate)} → ${fmtShort(previewEnd)} (${getDur()} days)`
-                    : 'Select a start date on the calendar'}
+                  {selectedDate && previewEnd ? `${fmtShort(selectedDate)} → ${fmtShort(previewEnd)} (${getDur()} days)` : 'Select a start date on the calendar'}
                 </div>
-
-                <button className="nutr-apply-btn" onClick={applyBlock} disabled={!selectedDate}>
-                  Apply cycle
-                </button>
-
-                {selectedBlock && selectedDate && (
-                  <button className="nutr-del-btn" onClick={removeBlock}>
-                    Remove cycle
-                  </button>
-                )}
-
-                {/* ── Inline weight editor ── */}
-                {todayBlock && (
-                  <WeighInEditor
-                    nutrition={nutrition}
-                    setNutrition={setNutrition}
-                    athlete={athlete}
-                  />
-                )}
+                <button className="nutr-apply-btn" onClick={applyBlock} disabled={!selectedDate}>Apply cycle</button>
+                {selectedBlock && selectedDate && <button className="nutr-del-btn" onClick={removeBlock}>Remove cycle</button>}
+                {todayBlock && <WeighInEditor nutrition={nutrition} setNutrition={setNutrition} athlete={athlete} />}
               </div>
             </div>
           )}
 
-          {/* ── Weight modal — shown when applying a new cycle ── */}
           {showWeightModal && (
             <div style={styles.modalOverlay} onClick={() => setShowWeightModal(false)}>
               <div style={{ ...styles.modalBox, maxWidth: 380 }} onClick={(e) => e.stopPropagation()}>
@@ -1827,31 +1284,14 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
                   <button style={styles.modalClose} onClick={() => setShowWeightModal(false)}>×</button>
                 </div>
                 <div style={{ padding: '18px 20px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div style={styles.wmHint}>
-                    Enter your current weight and goal weight. These will refine your daily calorie target.
-                  </div>
+                  <div style={styles.wmHint}>Enter your current weight and goal weight. These will refine your daily calorie target.</div>
                   <div>
                     <div style={styles.customLabel}>Current weight (lbs)</div>
-                    <input
-                      style={styles.addInput}
-                      type="number"
-                      min="50" max="500"
-                      placeholder="e.g. 145"
-                      value={pendingCycleWeight}
-                      onChange={(e) => { setPendingCycleWeight(e.target.value); setWeightModalErr(''); }}
-                      autoFocus
-                    />
+                    <input style={styles.addInput} type="number" min="50" max="500" placeholder="e.g. 145" value={pendingCycleWeight} onChange={(e) => { setPendingCycleWeight(e.target.value); setWeightModalErr(''); }} autoFocus />
                   </div>
                   <div>
                     <div style={styles.customLabel}>Goal weight (lbs)</div>
-                    <input
-                      style={styles.addInput}
-                      type="number"
-                      min="50" max="500"
-                      placeholder="e.g. 135"
-                      value={pendingGoalWeight}
-                      onChange={(e) => { setPendingGoalWeight(e.target.value); setWeightModalErr(''); }}
-                    />
+                    <input style={styles.addInput} type="number" min="50" max="500" placeholder="e.g. 135" value={pendingGoalWeight} onChange={(e) => { setPendingGoalWeight(e.target.value); setWeightModalErr(''); }} />
                   </div>
                   {weightModalErr && <div style={styles.errorText}>{weightModalErr}</div>}
                   <button style={styles.addBtn} onClick={confirmApplyBlock}>Save &amp; apply cycle</button>
@@ -1861,30 +1301,16 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
           )}
         </div>
 
-        {/* ── Weight log modal — click any past/today date ── */}
         {showWeightLogModal && weightLogDate && (
           <div style={styles.modalOverlay} onClick={() => setShowWeightLogModal(false)}>
             <div style={{ ...styles.modalBox, maxWidth: 340 }} onClick={(e) => e.stopPropagation()}>
               <div style={styles.modalHeader}>
-                <span style={styles.modalTitle}>
-                  Log weight · {weightLogDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </span>
+                <span style={styles.modalTitle}>Log weight · {weightLogDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                 <button style={styles.modalClose} onClick={() => setShowWeightLogModal(false)}>×</button>
               </div>
               <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={styles.wmHint}>
-                  Enter your weight for this day. It will appear on your trend graph.
-                </div>
-                <input
-                  style={styles.addInput}
-                  type="number"
-                  min="50" max="500"
-                  placeholder="e.g. 143.5"
-                  value={weightLogValue}
-                  onChange={(e) => { setWeightLogValue(e.target.value); setWeightLogErr(''); }}
-                  onKeyDown={(e) => e.key === 'Enter' && confirmWeightLog()}
-                  autoFocus
-                />
+                <div style={styles.wmHint}>Enter your weight for this day. It will appear on your trend graph.</div>
+                <input style={styles.addInput} type="number" min="50" max="500" placeholder="e.g. 143.5" value={weightLogValue} onChange={(e) => { setWeightLogValue(e.target.value); setWeightLogErr(''); }} onKeyDown={(e) => e.key === 'Enter' && confirmWeightLog()} autoFocus />
                 {weightLogErr && <div style={styles.errorText}>{weightLogErr}</div>}
                 <button style={styles.addBtn} onClick={confirmWeightLog}>Save weight</button>
                 {(nutrition.weightLog ?? []).some((e) => e.date === toKey(weightLogDate)) && (
@@ -1895,7 +1321,6 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
           </div>
         )}
 
-        {/* ─── NEW: Calorie Tracker ─── */}
         {athlete?.nutritionGuidance && (
           <CalorieTracker
             athlete={athlete}
